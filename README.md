@@ -1,5 +1,9 @@
 # Bitcoin Node Monitoring Tools
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Bitcoin Core](https://img.shields.io/badge/Bitcoin%20Core-24.0.1-orange.svg)](https://bitcoin.org/)
+[![Docker](https://img.shields.io/badge/Docker-Required-blue.svg)](https://www.docker.com/)
+
 A collection of shell scripts for monitoring Bitcoin node status, network fees, and market prices in real-time.
 
 ## Overview
@@ -34,6 +38,47 @@ chmod +x btc-*
 3. Configure authentication credentials in `credentials.txt` (already set up)
 
 4. Optional: Check node configuration in the `config` directory
+
+## Quick Start Guide
+
+1. **Initial Setup**
+   ```bash
+   # Clone the repository
+   git clone git@github.com:MatchaBear/bitcoin-node-monitor.git
+   cd bitcoin-node-monitor
+   
+   # Make scripts executable
+   chmod +x btc-*
+   
+   # Create credentials file from template
+   cp credentials.txt.template credentials.txt
+   
+   # Edit your credentials
+   nano credentials.txt
+   ```
+
+2. **Configure Bitcoin Node**
+   ```bash
+   # Start Bitcoin node
+   docker-compose up -d
+   
+   # Verify node is running
+   docker ps | grep bitcoin
+   ```
+
+3. **Setup Monitoring**
+   ```bash
+   # Add aliases to your shell
+   echo '# Bitcoin monitoring aliases
+   alias btcd="cd ~/bitcoin"
+   alias btcm="~/bitcoin/btc-monitor"
+   alias btcp="~/bitcoin/btcprice"
+   alias btcf="~/bitcoin/btc-fees"
+   alias btct="~/bitcoin/btc-tools"' >> ~/.zshrc
+   
+   # Reload shell configuration
+   source ~/.zshrc
+   ```
 
 ## Available Commands
 
@@ -152,6 +197,28 @@ btct health   # Node health check
 - `docker-compose.yml`: Docker configuration for Bitcoin node
 - `credentials.txt`: RPC credentials for node access
 - `config/`: Configuration directory for Bitcoin node
+
+## Contributing
+
+Contributions are welcome! Here's how you can help:
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'feat: add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+Please follow conventional commit messages:
+- `feat:` for new features
+- `fix:` for bug fixes
+- `docs:` for documentation updates
+- `chore:` for maintenance tasks
+
+## Versioning
+
+We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://github.com/MatchaBear/bitcoin-node-monitor/tags).
+
+## Current Version: 1.0.0
 
 ## Credits
 
