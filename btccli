@@ -1,0 +1,3 @@
+#!/bin/bash
+# Bitcoin CLI wrapper script with credentials
+docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN -rpcconnect=127.0.0.1 "$@"

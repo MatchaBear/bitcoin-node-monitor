@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Function to format numbers with commas
+format_number() {
+    printf "%'d" $1
+}
+
+# Function to calculate percentage change
+calc_percent() {
+    if [ $2 -ne 0 ]; then
+        echo "scale=2; ($1 - $2) * 100 / $2" | bc
+    else
+        echo "0.00"
+    fi
+}
+
+clear
+echo "Bitcoin Node & Market Monitor (Updates every 30 seconds)"
+echo "Press Ctrl+C to exit"
+
+# Initialize previous values for change calculation
+prev_blocks=0
+prev_price=0
+
+while true; do
+    clear
+    ./btc-tools all
+    
+    echo -e "\nUpdating in 30 seconds... (Ctrl+C to exit)"
+    sleep 30
+done

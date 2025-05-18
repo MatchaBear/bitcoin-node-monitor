@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  bitcoind:
+    image: ruimarinho/bitcoin-core:latest
+    container_name: bitcoin-node
+    restart: unless-stopped
+    volumes:
+      - ./data:/home/bitcoin/.bitcoin
+    ports:
+      - "127.0.0.1:8332:8332"
+      - "8333:8333"
+    environment:
+      - BITCOIN_USER=bitcoin
+      - BITCOIN_DATA=/home/bitcoin/.bitcoin
+    command:
+      - "bitcoind"
+      - "-printtoconsole"
+      - "-rpcuser=bitcoinrpc"
+      - "-rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN"
+      - "-rpcallowip=127.0.0.1"
+      - "-rpcbind=0.0.0.0:8332"
+      - "-server=1"
+      - "-prune=10000"
+      - "-dbcache=2048"
+      - "-maxmempool=512"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+      - /run
+      - /var/run
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-rpcuser=bitcoinrpc", "-rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN", "getblockchaininfo"]
+      interval: 2m
+      timeout: 30s
+      retries: 3
+      start_period: 5m
+    networks:
+      - bitcoin-network
+
+networks:
+  bitcoin-network:
+    driver: bridge
+    internal: false
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24

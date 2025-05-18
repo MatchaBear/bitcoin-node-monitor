@@ -1,0 +1,43 @@
+# Bitcoin Monitoring Tools - .gitignore
+
+# Sensitive information
+credentials.txt
+config/*.conf
+config/bitcoin.conf
+**/rpcauth.*
+**/*password*
+**/*credential*
+.env
+*.key
+*.pem
+*.cert
+
+# Bitcoin node data
+data/
+blocks/
+chainstate/
+databases/
+indexes/
+wallets/
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
+
+# IDE and editor files
+.idea/
+.vscode/
+*.sublime*
+*~
+
+# Docker related
+.docker/
+docker-data/
+
+# System files
+*.pid
+*.sock
+
