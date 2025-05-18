@@ -1,5 +1,5 @@
 #!/bin/bash
-
+q
 # Function to check node details
 check_node() {
     echo "=== Node Status ==="
@@ -112,9 +112,9 @@ format_time_until_halving() {
     fi
 }
 
-# Function to show supply information
+# Replace the check_supply function with this corrected version
 check_supply() {
-    echo "=== Bitcoin Supply Information ==="
+    echo "=== Bitcoin Supply Information (until current block download) ==="
     
     # Get current block height
     local blockchain_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getblockchaininfo 2>/dev/null)
@@ -127,17 +127,26 @@ check_supply() {
     # Calculate current supply
     local total_supply=$(calculate_supply $current_height)
     
-    # Calculate remaining supply and other metrics
+    # Constants
     local max_supply=21000000
+    local halving_interval=210000
+    local blocks_per_day=144  # 6 blocks per hour * 24 hours
+    local blocks_per_year=$((blocks_per_day * 365))
+    
+    # Calculate remaining supply
     local remaining=$((max_supply - total_supply))
-    local blocks_remaining=$((6930000 - current_height))
-    local years_remaining=$(echo "scale=1; $blocks_remaining * 10 / (6 * 24 * 365)" | bc)
     local percent_mined=$(echo "scale=2; $total_supply * 100 / $max_supply" | bc)
     
     # Calculate next halving information
-    local next_halving=$((((current_height/210000)+1)*210000))
-    local current_reward=$((50 / (1 << (current_height/210000))))
+    local next_halving=$((((current_height/halving_interval)+1)*halving_interval))
+    local current_era=$((current_height / halving_interval))
+    local current_reward=$(echo "scale=8; 50 / (2 ^ $current_era)" | bc)
+    local blocks_to_next_halving=$((next_halving - current_height))
     local time_until_halving=$(format_time_until_halving $current_height)
+    
+    # Calculate years until max supply (estimated to be 2140)
+    local current_year=$(date +%Y)
+    local years_remaining=$((2140 - current_year))
     
     echo "Current Block Height: $(printf "%'d" $current_height)"
     echo "Current Supply: $(printf "%'d" $total_supply) BTC"
@@ -147,7 +156,7 @@ check_supply() {
     echo -e "\nHalving Information:"
     echo "Next halving at block: $(printf "%'d" $next_halving)"
     echo "Time until next halving: $time_until_halving"
-    echo "Years until max supply: $years_remaining years"
+    echo "Years until max supply: $years_remaining years (approx. year 2140)"
 }
 
 # Function to check Bitcoin price

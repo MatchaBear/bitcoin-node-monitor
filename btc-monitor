@@ -25,7 +25,11 @@ prev_price=0
 while true; do
     clear
     ./btc-tools all
-    
+
+    echo ""
+    echo "========= Supply Summary ========="
+    ./supply_brief.sh
+
     echo -e "\nUpdating in 30 seconds... (Ctrl+C to exit)"
     sleep 30
 done
