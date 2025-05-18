@@ -1,5 +1,5 @@
 #!/bin/bash
-q
+
 # Function to check node details
 check_node() {
     echo "=== Node Status ==="
