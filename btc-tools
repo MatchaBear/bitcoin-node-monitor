@@ -112,7 +112,7 @@ format_time_until_halving() {
     fi
 }
 
-# Replace the check_supply function with this corrected version
+# Updated check_supply function with 3 decimal places for block reward
 check_supply() {
     echo "=== Bitcoin Supply Information (until current block download) ==="
     
@@ -140,7 +140,7 @@ check_supply() {
     # Calculate next halving information
     local next_halving=$((((current_height/halving_interval)+1)*halving_interval))
     local current_era=$((current_height / halving_interval))
-    local current_reward=$(echo "scale=8; 50 / (2 ^ $current_era)" | bc)
+    local current_reward=$(echo "scale=3; 50 / (2 ^ $current_era)" | bc)
     local blocks_to_next_halving=$((next_halving - current_height))
     local time_until_halving=$(format_time_until_halving $current_height)
     
@@ -159,21 +159,81 @@ check_supply() {
     echo "Years until max supply: $years_remaining years (approx. year 2140)"
 }
 
-# Function to check Bitcoin price
+# new function check_price with delta from last check
 check_price() {
+    # ANSI color codes
+    GREEN='\033[0;32m'
+    RED='\033[0;31m'
+    YELLOW='\033[1;33m'
+    CYAN='\033[0;36m'
+    NC='\033[0m' # No Color
+
+    # Temporary file to store last prices
+    LAST_PRICE_FILE="/tmp/.btc_price_last"
+
+    # Get current price data
     price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,sgd,idr&include_24h_change=true")
+    ath_data=$(curl -s "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false")
+
     if [[ $price_data == *"usd"* ]]; then
-        usd_price=$(echo $price_data | grep -o '"usd":[0-9.]*' | cut -d':' -f2)
-        sgd_price=$(echo $price_data | grep -o '"sgd":[0-9.]*' | cut -d':' -f2)
-        idr_price=$(echo $price_data | grep -o '"idr":[0-9.]*' | cut -d':' -f2)
-        usd_change=$(echo $price_data | grep -o '"usd_24h_change":[0-9.-]*' | cut -d':' -f2)
-        
-        echo "Bitcoin Price:"
-        echo "USD: \$$(printf "%'.2f" $usd_price) ($(printf "%+.2f%%" $usd_change))"
-        echo "SGD: S\$$(printf "%'.2f" $sgd_price)"
-        echo "IDR: Rp.$(printf "%'.2f" $idr_price)"
+        # Current prices
+        usd_price=$(echo "$price_data" | jq -r '.bitcoin.usd')
+        sgd_price=$(echo "$price_data" | jq -r '.bitcoin.sgd')
+        idr_price=$(echo "$price_data" | jq -r '.bitcoin.idr')
+        usd_change=$(echo "$price_data" | jq -r '.bitcoin.usd_24h_change')
+
+        # ATH
+        usd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd')
+        sgd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.sgd')
+        idr_ath=$(echo "$ath_data" | jq -r '.market_data.ath.idr')
+
+        [[ -z "$usd_ath" || "$usd_ath" == "0" ]] && usd_ath=73817
+        [[ -z "$sgd_ath" || "$sgd_ath" == "0" ]] && sgd_ath=98564
+        [[ -z "$idr_ath" || "$idr_ath" == "0" ]] && idr_ath=1143000000
+
+        # Load last price if available
+        if [[ -f "$LAST_PRICE_FILE" ]]; then
+            read last_usd last_sgd last_idr < "$LAST_PRICE_FILE"
+        else
+            last_usd=0
+            last_sgd=0
+            last_idr=0
+        fi
+
+        # Calculate deltas
+        usd_diff=$(echo "$usd_price - $last_usd" | bc)
+        usd_pct=$(echo "scale=9; ($usd_diff / $last_usd) * 100" | bc 2>/dev/null || echo "0")
+
+        sgd_diff=$(echo "$sgd_price - $last_sgd" | bc)
+        sgd_pct=$(echo "scale=9; ($sgd_diff / $last_sgd) * 100" | bc 2>/dev/null || echo "0")
+
+        idr_diff=$(echo "$idr_price - $last_idr" | bc)
+        idr_pct=$(echo "scale=9; ($idr_diff / $last_idr) * 100" | bc 2>/dev/null || echo "0")
+
+        # Save current prices to file for next comparison
+        echo "$usd_price $sgd_price $idr_price" > "$LAST_PRICE_FILE"
+
+        # Color based on USD delta
+        if (( $(echo "$usd_diff > 0" | bc -l) )); then
+            change_color=$GREEN
+        elif (( $(echo "$usd_diff < 0" | bc -l) )); then
+            change_color=$RED
+        else
+            change_color=$YELLOW
+        fi
+
+        # Output
+        echo -e "${CYAN}Bitcoin Price:${NC}"
+        echo -e "USD: \$$(printf "%'.2f" "$usd_price")  ${change_color}(Δ \$$(printf "%'.2f" "$usd_diff"), ${usd_pct}%)${NC}"
+        echo -e "SGD: S\$$(printf "%'.2f" "$sgd_price")  ${change_color}(Δ S\$$(printf "%'.2f" "$sgd_diff"), ${sgd_pct}%)${NC}"
+        echo -e "IDR: Rp.$(printf "%'.0f" "$idr_price")  ${change_color}(Δ Rp.$(printf "%'.0f" "$idr_diff"), ${idr_pct}%)${NC}"
+
+        echo -e "${CYAN}All-Time High (ATH):${NC}"
+        echo -e "USD: \$$(printf "%'.2f" "$usd_ath")"
+        echo -e "SGD: S\$$(printf "%'.2f" "$sgd_ath")"
+        echo -e "IDR: Rp.$(printf "%'.0f" "$idr_ath")"
     else
-        echo "Error: Could not fetch price data"
+        echo -e "${RED}Error: Could not fetch price data${NC}"
     fi
 }
 
