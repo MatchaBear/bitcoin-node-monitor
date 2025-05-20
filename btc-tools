@@ -243,12 +243,12 @@ check_price() {
         fi
 
         # Output
-        echo -e "${CYAN}Bitcoin Price:${NC}"
+        echo -e "📈 ${CYAN}Bitcoin Price:${NC}"
         echo -e "USD: \$$(printf "%'.2f" "$usd_price")  ${change_color}(Δ \$$(printf "%'.2f" "$usd_diff"), ${usd_pct}%)${NC}"
         echo -e "SGD: S\$$(printf "%'.2f" "$sgd_price")  ${change_color}(Δ S\$$(printf "%'.2f" "$sgd_diff"), ${sgd_pct}%)${NC}"
         echo -e "IDR: Rp.$(printf "%'.0f" "$idr_price")  ${change_color}(Δ Rp.$(printf "%'.0f" "$idr_diff"), ${idr_pct}%)${NC}"
 
-        echo -e "${CYAN}All-Time High (ATH):${NC}"
+        echo -e "📊 ${CYAN}All-Time High (ATH):${NC}"
         echo -e "USD: \$$(printf "%'.2f" "$usd_ath")"
         echo -e "SGD: S\$$(printf "%'.2f" "$sgd_ath")"
         echo -e "IDR: Rp.$(printf "%'.0f" "$idr_ath")"
@@ -260,11 +260,26 @@ check_price() {
 # Function to show all info
 check_all() {
     clear
-    echo "========================================"
-    echo "       Bitcoin Dashboard"
-    echo "Time: $(date '+%Y-%m-%d %H:%M:%S')"
-    echo "========================================"
-    
+   
+    BAR="========================================"
+    DASHBOARD_TITLE="🟠 Bitcoin Dashboard"
+    TIME_STR="Time: $(date '+%Y-%m-%d %H:%M:%S')"
+
+    BAR_LEN=${#BAR}
+    TITLE_LEN=20  # Panjang judul termasuk emoji
+    TIME_LEN=${#TIME_STR}
+
+    TITLE_PAD=$(( (BAR_LEN - TITLE_LEN) / 2 ))
+    TIME_PAD=$(( (BAR_LEN - TIME_LEN) / 2 ))
+
+    TITLE_SPACE=$(printf '%*s' "$TITLE_PAD" "")
+    TIME_SPACE=$(printf '%*s' "$TIME_PAD" "")
+
+    echo "$BAR"
+    echo "${TITLE_SPACE}${DASHBOARD_TITLE}"
+    echo "${TIME_SPACE}${TIME_STR}"
+    echo "$BAR"
+ 
     # Check node health first
     check_node_health
     local node_status=$?
