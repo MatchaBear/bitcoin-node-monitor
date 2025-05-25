@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   bitcoind:
     image: ruimarinho/bitcoin-core:latest
@@ -37,7 +35,7 @@ services:
       - /run
       - /var/run
     healthcheck:
-      test: ["CMD", "bitcoin-cli", "-rpcuser=bitcoinrpc", "-rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN", "getblockchaininfo"]
+      test: [ "CMD", "bitcoin-cli", "-rpcuser=bitcoinrpc", "-rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN", "getblockchaininfo" ]
       interval: 2m
       timeout: 30s
       retries: 3
