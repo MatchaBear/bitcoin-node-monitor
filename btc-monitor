@@ -150,8 +150,7 @@ fetch_bulletproof_price() {
         local change=$(echo "$result" | jq -r ".RAW.BTC.$currency_upper.CHANGEPCT24HOUR // 0")
         if [[ "$price" != "0" ]]; then
             # Set provider variable globally
-            eval "${currency_upper}_PROVIDER=CryptoCompare"
-            echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":$change}}"
+            echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":$change,\"provider\":\"CryptoCompare\"}}"
             return 0
         fi
     fi
@@ -164,8 +163,7 @@ fetch_bulletproof_price() {
             local price=$(echo "$result" | jq -r '.lastPrice // 0')
             local change=$(echo "$result" | jq -r '.priceChangePercent // 0')
             if [[ "$price" != "0" ]]; then
-                eval "USD_PROVIDER=Binance_24hr"
-                echo "{\"bitcoin\":{\"usd\":$price,\"usd_24h_change\":$change}}"
+                echo "{\"bitcoin\":{\"usd\":$price,\"usd_24h_change\":$change,\"provider\":\"Binance 24hr\"}}"
                 return 0
             fi
         fi
@@ -177,8 +175,7 @@ fetch_bulletproof_price() {
     if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"$currency_upper"* ]]; then
         local price=$(echo "$result" | jq -r ".$currency_upper // 0")
         if [[ "$price" != "0" ]]; then
-            eval "${currency_upper}_PROVIDER=CryptoCompare_Basic"
-            echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":0}}"
+            echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":0,\"provider\":\"CryptoCompare Basic\"}}"
             return 0
         fi
     fi
@@ -187,23 +184,23 @@ fetch_bulletproof_price() {
     local coingecko_url="https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${currency_lower}&include_24h_change=true"
     result=$(curl -s --connect-timeout 5 --max-time 10 "$coingecko_url" 2>/dev/null)
     if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"bitcoin"* ]] && [[ "$result" != *"error_code"* ]]; then
-        eval "${currency_upper}_PROVIDER=CoinGecko"
-        echo "$result"
+        # Add provider info to the result
+        result_with_provider=$(echo "$result" | jq '.bitcoin.provider = "CoinGecko"')
+        echo "$result_with_provider"
         return 0
     fi
     
     # Provider 5: Fallback with recent approximate values (updated regularly)
-    eval "${currency_upper}_PROVIDER=Fallback_Cache"
     case "$currency_lower" in
-        "usd") echo '{"bitcoin":{"usd":105000,"usd_24h_change":0}}' ;;
-        "eur") echo '{"bitcoin":{"eur":92500,"eur_24h_change":0}}' ;;
-        "gbp") echo '{"bitcoin":{"gbp":78000,"gbp_24h_change":0}}' ;;
-        "sgd") echo '{"bitcoin":{"sgd":135700,"sgd_24h_change":0}}' ;;
-        "chf") echo '{"bitcoin":{"chf":86200,"chf_24h_change":0}}' ;;
-        "jpy") echo '{"bitcoin":{"jpy":15130000,"jpy_24h_change":0}}' ;;
-        "krw") echo '{"bitcoin":{"krw":145250000,"krw_24h_change":0}}' ;;
-        "idr") echo '{"bitcoin":{"idr":1719000000,"idr_24h_change":0}}' ;;
-        *) echo '{"bitcoin":{"'$currency_lower'":0,"'${currency_lower}'_24h_change":0}}' ;;
+        "usd") echo '{"bitcoin":{"usd":105000,"usd_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "eur") echo '{"bitcoin":{"eur":92500,"eur_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "gbp") echo '{"bitcoin":{"gbp":78000,"gbp_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "sgd") echo '{"bitcoin":{"sgd":135700,"sgd_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "chf") echo '{"bitcoin":{"chf":86200,"chf_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "jpy") echo '{"bitcoin":{"jpy":15130000,"jpy_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "krw") echo '{"bitcoin":{"krw":145250000,"krw_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "idr") echo '{"bitcoin":{"idr":1719000000,"idr_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        *) echo '{"bitcoin":{"'$currency_lower'":0,"'${currency_lower}'_24h_change":0,"provider":"Fallback Cache"}}' ;;
     esac
     return 0
 }
@@ -259,13 +256,14 @@ process_currency_data() {
         local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
         local price=$(echo "$data" | jq -r ".bitcoin.$currency_lower // 0" 2>/dev/null)
         local change=$(echo "$data" | jq -r ".bitcoin.${currency_lower}_24h_change // 0" 2>/dev/null)
+        local provider=$(echo "$data" | jq -r ".bitcoin.provider // \"Unknown\"" 2>/dev/null)
         
         # Calculate raw change
         if [[ "$price" != "0" && "$change" != "0" && "$change" != "null" ]]; then
             local raw_change=$(echo "scale=2; $price * $change / 100" | bc 2>/dev/null || echo "0")
-            echo "$price|$change|$raw_change"
+            echo "$price|$change|$raw_change|$provider"
         else
-            echo "$price|0|0"
+            echo "$price|0|0|$provider"
         fi
     else
         echo "0|0|0"
@@ -273,14 +271,14 @@ process_currency_data() {
 }
 
 # Process all currencies with their individual data
-IFS='|' read usd_price usd_change_pct usd_change_raw <<< "$(process_currency_data "$usd_data" "USD")"
-IFS='|' read eur_price eur_change_pct eur_change_raw <<< "$(process_currency_data "$eur_data" "EUR")"
-IFS='|' read gbp_price gbp_change_pct gbp_change_raw <<< "$(process_currency_data "$gbp_data" "GBP")"
-IFS='|' read sgd_price sgd_change_pct sgd_change_raw <<< "$(process_currency_data "$sgd_data" "SGD")"
-IFS='|' read chf_price chf_change_pct chf_change_raw <<< "$(process_currency_data "$chf_data" "CHF")"
-IFS='|' read jpy_price jpy_change_pct jpy_change_raw <<< "$(process_currency_data "$jpy_data" "JPY")"
-IFS='|' read krw_price krw_change_pct krw_change_raw <<< "$(process_currency_data "$krw_data" "KRW")"
-IFS='|' read idr_price idr_change_pct idr_change_raw <<< "$(process_currency_data "$idr_data" "IDR")"
+IFS='|' read usd_price usd_change_pct usd_change_raw USD_PROVIDER <<< "$(process_currency_data "$usd_data" "USD")"
+IFS='|' read eur_price eur_change_pct eur_change_raw EUR_PROVIDER <<< "$(process_currency_data "$eur_data" "EUR")"
+IFS='|' read gbp_price gbp_change_pct gbp_change_raw GBP_PROVIDER <<< "$(process_currency_data "$gbp_data" "GBP")"
+IFS='|' read sgd_price sgd_change_pct sgd_change_raw SGD_PROVIDER <<< "$(process_currency_data "$sgd_data" "SGD")"
+IFS='|' read chf_price chf_change_pct chf_change_raw CHF_PROVIDER <<< "$(process_currency_data "$chf_data" "CHF")"
+IFS='|' read jpy_price jpy_change_pct jpy_change_raw JPY_PROVIDER <<< "$(process_currency_data "$jpy_data" "JPY")"
+IFS='|' read krw_price krw_change_pct krw_change_raw KRW_PROVIDER <<< "$(process_currency_data "$krw_data" "KRW")"
+IFS='|' read idr_price idr_change_pct idr_change_raw IDR_PROVIDER <<< "$(process_currency_data "$idr_data" "IDR")"
 
 # Check if we have valid data
 api_success=false
