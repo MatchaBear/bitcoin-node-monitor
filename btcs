@@ -57,19 +57,45 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
     echo -e "Peers: $peer_status"
     echo -e "Mempool: ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1024/1024" | bc) MB)"
     
-    # Show peer IP addresses for network geeks 🌐
-    echo -e "${CYAN}🌐 Connected Peer IPs:${NC}"
+    # Show public IP first (VPN detection for network engineers!) 🕵️‍♂️
+    echo -e "${CYAN}🌐 Network Information:${NC}"
+    
+    # Get public IP with fallback methods
+    public_ip=$(curl -s --connect-timeout 5 "https://ipinfo.io/ip" 2>/dev/null || curl -s --connect-timeout 5 "https://api.ipify.org" 2>/dev/null || curl -s --connect-timeout 5 "https://icanhazip.com" 2>/dev/null | tr -d '\n')
+    
+    if [ ! -z "$public_ip" ] && [[ "$public_ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        # Get ISP/location info
+        ip_info=$(curl -s --connect-timeout 5 "https://ipinfo.io/$public_ip" 2>/dev/null)
+        if [[ $ip_info == *"org"* ]]; then
+            isp=$(echo "$ip_info" | jq -r '.org // "Unknown ISP"' | cut -c1-30)
+            city=$(echo "$ip_info" | jq -r '.city // "Unknown"')
+            country=$(echo "$ip_info" | jq -r '.country // "Unknown"')
+            echo -e "   ${WHITE}Your Public IP:${NC} ${GREEN}$public_ip${NC} ${CYAN}($isp, $city $country)${NC}"
+        else
+            echo -e "   ${WHITE}Your Public IP:${NC} ${GREEN}$public_ip${NC} ${CYAN}(ISP lookup failed)${NC}"
+        fi
+        
+        # VPN Detection hint
+        if [[ "$isp" == *"VPN"* ]] || [[ "$isp" == *"Proxy"* ]] || [[ "$isp" == *"Virtual"* ]] || [[ "$isp" == *"Private"* ]]; then
+            echo -e "   ${YELLOW}🔒 VPN/Proxy detected!${NC}"
+        fi
+    else
+        echo -e "   ${RED}❌ Could not determine public IP${NC}"
+    fi
+    
+    # Show peer IP addresses
+    echo -e "   ${CYAN}Connected Peers:${NC}"
     peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getpeerinfo 2>/dev/null | jq -r '.[].addr' | head -5)
     if [ ! -z "$peer_ips" ]; then
         echo "$peer_ips" | while read ip; do
             if [ ! -z "$ip" ]; then
                 # Extract just IP without port for geolocation hint
                 clean_ip=$(echo "$ip" | cut -d':' -f1 | sed 's/\[//g' | sed 's/\]//g')
-                echo -e "   ${WHITE}$ip${NC} ${CYAN}($clean_ip)${NC}"
+                echo -e "     ${WHITE}$ip${NC} ${CYAN}($clean_ip)${NC}"
             fi
         done
     else
-        echo -e "   ${YELLOW}No peer data available${NC}"
+        echo -e "     ${YELLOW}No peer data available${NC}"
     fi
 else
     echo -e "${RED}❌ Node connection failed${NC}"
