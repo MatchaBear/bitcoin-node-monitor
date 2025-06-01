@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Quick Bitcoin Status Dashboard (One-shot version)
+echo -e "${BOLD}${CYAN}============================================${NC}"
+echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Status Dashboard           ${NC}"
+echo -e "${BOLD}${CYAN}============================================${NC}"
+echo -e "${WHITE}📅 $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+echo -e "${CYAN}============================================${NC}"
+echo
+
+# Get all data in one go for efficiency
+sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getblockchaininfo 2>/dev/null)
+network_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getnetworkinfo 2>/dev/null)
+mempool_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getmempoolinfo 2>/dev/null)
+
+# Node Status Section
+echo -e "${BOLD}${GREEN}🔧 NODE STATUS${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
+    headers=$(echo "$sync_info" | grep '"headers"' | grep -o '[0-9]*')
+    blocks=$(echo "$sync_info" | grep '"blocks"' | grep -o '[0-9]*')
+    connections=$(echo "$network_info" | grep '"connections"' | grep -o '[0-9]*')
+    mempool_size=$(echo "$mempool_info" | grep '"size"' | grep -o '[0-9]*')
+    mempool_bytes=$(echo "$mempool_info" | grep '"bytes"' | grep -o '[0-9]*')
+    
+    # Sync status with color
+    if [ "$blocks" -eq "$headers" ]; then
+        sync_status="${GREEN}✅ Fully Synced${NC}"
+    else
+        sync_percent=$(echo "scale=2; $blocks * 100 / $headers" | bc)
+        sync_status="${YELLOW}⚠️  Syncing ($sync_percent%)${NC}"
+    fi
+    
+    # Peer status with color
+    if [ "$connections" -ge 8 ]; then
+        peer_status="${GREEN}$connections${NC}"
+    elif [ "$connections" -ge 4 ]; then
+        peer_status="${YELLOW}$connections${NC}"
+    else
+        peer_status="${RED}$connections${NC}"
+    fi
+    
+    echo -e "Status: $sync_status"
+    echo -e "Height: ${WHITE}$(printf "%'d" $blocks)${NC} / ${WHITE}$(printf "%'d" $headers)${NC}"
+    echo -e "Peers: $peer_status"
+    echo -e "Mempool: ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1024/1024" | bc) MB)"
+else
+    echo -e "${RED}❌ Node connection failed${NC}"
+fi
+echo
+
+# Price Section
+echo -e "${BOLD}${PURPLE}💰 MARKET DATA${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+# Get price data
+price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,sgd,idr&include_24h_change=true")
+if [[ $price_data == *"usd"* ]]; then
+    usd_price=$(echo "$price_data" | jq -r '.bitcoin.usd // 0')
+    sgd_price=$(echo "$price_data" | jq -r '.bitcoin.sgd // 0')
+    idr_price=$(echo "$price_data" | jq -r '.bitcoin.idr // 0')
+    usd_change=$(echo "$price_data" | jq -r '.bitcoin.usd_24h_change // 0')
+    
+    # Color for 24h change
+    if (( $(echo "$usd_change > 0" | bc -l) )); then
+        change_color=$GREEN
+        change_symbol="▲"
+    elif (( $(echo "$usd_change < 0" | bc -l) )); then
+        change_color=$RED
+        change_symbol="▼"
+    else
+        change_color=$YELLOW
+        change_symbol="─"
+    fi
+    
+    echo -e "USD: ${WHITE}\$$(printf "%'12.2f" "$usd_price")${NC} ${change_color}$change_symbol $(printf "%.2f" "$usd_change")%%${NC}"
+    echo -e "SGD: ${WHITE}S\$$(printf "%'11.2f" "$sgd_price")${NC}"
+    echo -e "IDR: ${WHITE}Rp.$(printf "%'10.0f" "$idr_price")${NC}"
+else
+    echo -e "${RED}❌ Price data unavailable${NC}"
+fi
+echo
+
+# Supply Section (optimized, no external script call)
+echo -e "${BOLD}${BLUE}⚡ SUPPLY INFO${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+if [ ! -z "$blocks" ]; then
+    # Calculate supply efficiently
+    current_height=$blocks
+    max_supply=21000000
+    halving_interval=210000
+    current_era=$((current_height / halving_interval))
+    current_reward=$(echo "scale=8; 50 / (2 ^ $current_era)" | bc)
+    
+    # Simple supply calculation
+    total_supply=0
+    temp_height=$current_height
+    reward=50
+    
+    for ((i=0; i<$current_era; i++)); do
+        total_supply=$(echo "$total_supply + ($halving_interval * $reward)" | bc)
+        reward=$(echo "scale=8; $reward / 2" | bc)
+        temp_height=$((temp_height - halving_interval))
+    done
+    
+    total_supply=$(echo "$total_supply + ($temp_height * $reward)" | bc)
+    remaining=$(echo "$max_supply - $total_supply" | bc)
+    percent_mined=$(echo "scale=6; $total_supply * 100 / $max_supply" | bc)
+    
+    # Next halving
+    next_halving=$(( ((current_height/halving_interval)+1)*halving_interval ))
+    blocks_to_halving=$((next_halving - current_height))
+    days_to_halving=$((blocks_to_halving * 10 / 1440))
+    
+    echo -e "Current Supply: ${WHITE}$(printf "%.0f" "$total_supply")${NC} BTC (${percent_mined}%)"
+    echo -e "Remaining: ${WHITE}$(printf "%.0f" "$remaining")${NC} BTC"
+    echo -e "Block Reward: ${WHITE}$current_reward${NC} BTC"
+    echo -e "Next Halving: ${YELLOW}$(printf "%'d" $blocks_to_halving)${NC} blocks (~$days_to_halving days)"
+else
+    echo -e "${RED}❌ Supply data unavailable${NC}"
+fi
+echo
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${WHITE}💡 Use ${BOLD}btcm${NC}${WHITE} for continuous monitoring${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+

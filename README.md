@@ -71,7 +71,8 @@ chmod +x btc-*
    # Add aliases to your shell
    echo '# Bitcoin monitoring aliases
    alias btcd="cd ~/bitcoin"
-   alias btcm="~/bitcoin/btc-monitor"
+   alias btcm="~/bitcoin/btc-monitor"     # 🔄 Enhanced continuous monitoring
+   alias btcs="~/bitcoin/btcs"            # ⚡ Quick status check (NEW!)
    alias btcp="~/bitcoin/btcprice"
    alias btcf="~/bitcoin/btc-fees"
    alias btct="~/bitcoin/btc-tools"' >> ~/.zshrc
@@ -86,10 +87,22 @@ chmod +x btc-*
 
 | Command | Description |
 |---------|-------------|
-| `./btc-monitor` | Full monitoring dashboard that updates every 30 seconds |
-| `./btc-tools all` | Comprehensive one-time snapshot of all information |
+| `./btc-monitor` | **🔄 Enhanced continuous monitoring** - Full dashboard with colored output that updates every 30 seconds |
+| `./btcs` | **⚡ Quick status check** - Single snapshot with colored output, perfect for quick checks |
+| `./btc-tools all` | Comprehensive one-time snapshot of all information (legacy) |
 | `./btc-fees` | Current network fee estimates |
 | `./btcprice` | Quick Bitcoin price check in USD |
+
+### 🎨 Enhanced Features (v2.0)
+
+**New in this version:**
+- **Colored output** with clear visual separation between titles and data
+- **Emoji indicators** for quick status recognition
+- **More efficient code** - single API calls instead of multiple scripts
+- **Better error handling** and fallbacks
+- **Two monitoring modes:**
+  - `btcm` (alias for `btc-monitor`) - Continuous monitoring with auto-refresh
+  - `btcs` - Quick one-shot status check
 
 ### Advanced Options with btc-tools
 
@@ -109,7 +122,8 @@ Add these aliases to your shell configuration file (`~/.zshrc` or `~/.bashrc`):
 ```bash
 # Bitcoin monitoring aliases
 alias btcd="cd ~/bitcoin"              # Quick navigate to Bitcoin directory
-alias btcm="~/bitcoin/btc-monitor"     # Full monitoring dashboard
+alias btcm="~/bitcoin/btc-monitor"     # 🔄 Enhanced continuous monitoring dashboard
+alias btcs="~/bitcoin/btcs"            # ⚡ Quick status check (NEW!)
 alias btcp="~/bitcoin/btcprice"        # Quick price check
 alias btcf="~/bitcoin/btc-fees"        # Network fees
 alias btct="~/bitcoin/btc-tools"       # Tools with various options
@@ -128,8 +142,11 @@ With aliases set up, you can use:
 # Navigate to Bitcoin directory
 btcd
 
-# Launch the full monitoring dashboard
+# 🔄 Launch the enhanced continuous monitoring dashboard (with colors!)
 btcm
+
+# ⚡ Quick status check (NEW! - single snapshot with colors)
+btcs
 
 # Check current price
 btcp
@@ -143,6 +160,38 @@ btct price    # Just price information
 btct node     # Node status only
 btct supply   # Supply and halving information
 btct health   # Node health check
+```
+
+### 🎨 Visual Output Example
+
+The enhanced scripts now provide colored output with clear visual hierarchy:
+
+```
+============================================
+    🟠 Bitcoin Status Dashboard           
+============================================
+📅 2025-06-02 02:44:16
+============================================
+
+🔧 NODE STATUS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Status: ✅ Fully Synced
+Height: 899,403 / 899,403
+Peers: 11 (green color for healthy status)
+Mempool: 1,393 tx (1.0 MB)
+
+💰 MARKET DATA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USD: $104,752.00 ▲ 2.50% (green for positive change)
+SGD: S$135,347.00
+IDR: Rp.1,714,659,169
+
+⚡ SUPPLY INFO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Current Supply: 19873134 BTC (94.633973%)
+Remaining: 1126866 BTC
+Block Reward: 3.12500000 BTC
+Next Halving: 150,597 blocks (~1045 days)
 ```
 
 ## Monitoring Details
@@ -188,8 +237,9 @@ btct health   # Node health check
 
 ## File Descriptions
 
-- `btc-monitor`: Continuous monitoring dashboard with auto-refresh
-- `btc-tools`: Main utility script with multiple functions
+- `btc-monitor`: **🔄 Enhanced** continuous monitoring dashboard with colored output and auto-refresh
+- `btcs`: **⚡ NEW!** Quick status check with colored output (one-shot version)
+- `btc-tools`: Main utility script with multiple functions (legacy)
 - `btc-fees`: Network fee estimator
 - `btcprice`: Simple price checker
 - `btccli`: Simplified Bitcoin CLI interface
@@ -218,7 +268,15 @@ Please follow conventional commit messages:
 
 We use [SemVer](http://semver.org/) for versioning. For the versions available, see the [tags on this repository](https://github.com/MatchaBear/bitcoin-node-monitor/tags).
 
-## Current Version: 1.0.0
+## Current Version: 2.0.0
+
+### 🚀 Version 2.0.0 Changelog
+- ✨ **Enhanced visual output** with colors and emojis
+- ⚡ **New `btcs` command** for quick status checks
+- 🔧 **Improved efficiency** - consolidated API calls
+- 🎨 **Better UI/UX** with clear visual hierarchy
+- 🛠️ **Better error handling** and fallbacks
+- 📊 **More informative displays** with status indicators
 
 ## Credits
 
