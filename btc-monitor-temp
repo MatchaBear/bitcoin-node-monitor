@@ -11,9 +11,9 @@ WHITE='\033[1;37m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Quick Bitcoin Status Dashboard (One-shot version)
+# Quick Bitcoin Node & Market Monitor (One-shot version)
 echo -e "${BOLD}${CYAN}============================================${NC}"
-echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Status Dashboard           ${NC}"
+echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Node & Market Monitor           ${NC}"
 echo -e "${BOLD}${CYAN}============================================${NC}"
 echo -e "${WHITE}📅 $(date '+%Y-%m-%d %H:%M:%S')${NC}"
 echo -e "${CYAN}============================================${NC}"
@@ -402,6 +402,6 @@ fi
 echo
 
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${WHITE}💡 Use ${BOLD}btcm${NC}${WHITE} for continuous monitoring${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    sleep 30
+done
 
