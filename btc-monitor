@@ -74,6 +74,47 @@ show_enhanced_dashboard() {
         echo -e "Height: ${WHITE}$(printf "%'d" $blocks)${NC} / ${WHITE}$(printf "%'d" $headers)${NC}"
         echo -e "Peers: $peer_status"
         echo -e "Mempool: ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1024/1024" | bc) MB)"
+        
+        # Show public IP first (VPN detection for network engineers!) 🕵️‍♂️
+        echo -e "${CYAN}🌐 Network Information:${NC}"
+        
+        # Get public IP with fallback methods
+        public_ip=$(curl -s --connect-timeout 5 "https://ipinfo.io/ip" 2>/dev/null || curl -s --connect-timeout 5 "https://api.ipify.org" 2>/dev/null || curl -s --connect-timeout 5 "https://icanhazip.com" 2>/dev/null | tr -d '\n')
+        
+        if [ ! -z "$public_ip" ] && [[ "$public_ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+            # Get ISP/location info
+            ip_info=$(curl -s --connect-timeout 5 "https://ipinfo.io/$public_ip" 2>/dev/null)
+            if [[ $ip_info == *"org"* ]]; then
+                isp=$(echo "$ip_info" | jq -r '.org // "Unknown ISP"' | cut -c1-30)
+                city=$(echo "$ip_info" | jq -r '.city // "Unknown"')
+                country=$(echo "$ip_info" | jq -r '.country // "Unknown"')
+                echo -e "   ${WHITE}Your Public IP:${NC} ${GREEN}$public_ip${NC} ${CYAN}($isp, $city $country)${NC}"
+            else
+                echo -e "   ${WHITE}Your Public IP:${NC} ${GREEN}$public_ip${NC} ${CYAN}(ISP lookup failed)${NC}"
+            fi
+            
+            # VPN Detection hint
+            if [[ "$isp" == *"VPN"* ]] || [[ "$isp" == *"Proxy"* ]] || [[ "$isp" == *"Virtual"* ]] || [[ "$isp" == *"Private"* ]]; then
+                echo -e "   ${YELLOW}🔒 VPN/Proxy detected!${NC}"
+            fi
+        else
+            echo -e "   ${RED}❌ Could not determine public IP${NC}"
+        fi
+        
+        # Show peer IP addresses
+        echo -e "   ${CYAN}Connected Peers:${NC}"
+        peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getpeerinfo 2>/dev/null | jq -r '.[].addr' | head -5)
+        if [ ! -z "$peer_ips" ]; then
+            echo "$peer_ips" | while read ip; do
+                if [ ! -z "$ip" ]; then
+                    # Extract just IP without port for geolocation hint
+                    clean_ip=$(echo "$ip" | cut -d':' -f1 | sed 's/\[//g' | sed 's/\]//g')
+                    echo -e "     ${WHITE}$ip${NC} ${CYAN}($clean_ip)${NC}"
+                fi
+            done
+        else
+            echo -e "     ${YELLOW}No peer data available${NC}"
+        fi
     else
         echo -e "${RED}❌ Node connection failed${NC}"
     fi
@@ -83,56 +124,128 @@ show_enhanced_dashboard() {
     echo -e "${BOLD}${PURPLE}💰 MARKET DATA ${CYAN}(Live CoinGecko API)${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
-    # Get price data for multiple currencies with timestamp
-    price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,sgd,idr,eur,gbp,chf,jpy,krw&include_24h_change=true&include_last_updated_at=true")
-    
-    # Display API fetch time
+    # Get current price data and market data separately for better reliability
     api_time=$(date '+%H:%M:%S')
-    echo -e "    ${CYAN}📡 Last fetched: $api_time UTC${NC}"
-    if [[ $price_data == *"usd"* ]]; then
-        # Current prices
-        usd_price=$(echo "$price_data" | jq -r '.bitcoin.usd // 0')
-        sgd_price=$(echo "$price_data" | jq -r '.bitcoin.sgd // 0')
-        idr_price=$(echo "$price_data" | jq -r '.bitcoin.idr // 0')
-        eur_price=$(echo "$price_data" | jq -r '.bitcoin.eur // 0')
-        gbp_price=$(echo "$price_data" | jq -r '.bitcoin.gbp // 0')
-        chf_price=$(echo "$price_data" | jq -r '.bitcoin.chf // 0')
-        jpy_price=$(echo "$price_data" | jq -r '.bitcoin.jpy // 0')
-        krw_price=$(echo "$price_data" | jq -r '.bitcoin.krw // 0')
-        usd_change=$(echo "$price_data" | jq -r '.bitcoin.usd_24h_change // 0')
+    sg_time=$(TZ='Asia/Singapore' date '+%H:%M:%S')
+    jkt_time=$(TZ='Asia/Jakarta' date '+%H:%M:%S')
+    echo -e "${CYAN}📡 Last fetched: $api_time UTC | $sg_time SGT | $jkt_time WIB${NC}"
+    
+    # Try CoinGecko market data API for more complete information
+    price_data=$(curl -s --connect-timeout 10 "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1" 2>/dev/null)
+    basic_price=$(curl -s --connect-timeout 10 "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur,gbp,sgd,chf,jpy,krw,idr" 2>/dev/null)
+    # Calculate 24h change from market chart data and get current prices
+    if [[ $basic_price == *"usd"* ]]; then
+        # Get current prices
+        usd_price=$(echo "$basic_price" | jq -r '.bitcoin.usd // 0')
+        eur_price=$(echo "$basic_price" | jq -r '.bitcoin.eur // 0')
+        gbp_price=$(echo "$basic_price" | jq -r '.bitcoin.gbp // 0')
+        sgd_price=$(echo "$basic_price" | jq -r '.bitcoin.sgd // 0')
+        chf_price=$(echo "$basic_price" | jq -r '.bitcoin.chf // 0')
+        jpy_price=$(echo "$basic_price" | jq -r '.bitcoin.jpy // 0')
+        krw_price=$(echo "$basic_price" | jq -r '.bitcoin.krw // 0')
+        idr_price=$(echo "$basic_price" | jq -r '.bitcoin.idr // 0')
         
-        # Color for 24h change
-        if (( $(echo "$usd_change > 0" | bc -l) )); then
-            change_color=$GREEN
-            change_symbol="▲"
-        elif (( $(echo "$usd_change < 0" | bc -l) )); then
-            change_color=$RED
-            change_symbol="▼"
+        # Calculate 24h change from price chart data
+        if [[ $price_data == *"prices"* ]]; then
+            price_24h_ago=$(echo "$price_data" | jq -r '.prices[0][1] // 0')
+            current_usd=$(echo "$price_data" | jq -r '.prices[-1][1] // 0')
+            if [[ "$current_usd" != "0" && "$price_24h_ago" != "0" ]]; then
+                usd_change_pct=$(echo "scale=4; (($current_usd - $price_24h_ago) / $price_24h_ago) * 100" | bc 2>/dev/null || echo "0")
+                usd_change_raw=$(echo "scale=2; $current_usd - $price_24h_ago" | bc 2>/dev/null || echo "0")
+            else
+                usd_change_pct="0"
+                usd_change_raw="0"
+            fi
         else
-            change_color=$YELLOW
-            change_symbol="─"
+            usd_change_pct="0"
+            usd_change_raw="0"
         fi
         
-        # Format change with better logic and check for actual changes
-        change_abs=$(echo "$usd_change" | sed 's/-//' | bc 2>/dev/null || echo "0")
-        if [[ "$usd_change" != "null" && "$usd_change" != "0" && $(echo "$change_abs > 0.01" | bc) == "1" ]]; then
-            change_formatted=$(printf "%.2f" "$usd_change")
-            change_text="${change_color}$change_symbol $change_formatted%${NC}"
-        elif [[ "$usd_change" != "null" && "$usd_change" != "0" ]]; then
-            change_formatted=$(printf "%.3f" "$usd_change")
-            change_text="${change_color}$change_symbol $change_formatted%${NC}"
-        else
-            change_text="${YELLOW}■ Stable${NC}"
-        fi
+        # Calculate raw changes for other currencies based on percentage
+        eur_change_pct="$usd_change_pct"
+        gbp_change_pct="$usd_change_pct"
+        sgd_change_pct="$usd_change_pct"
+        chf_change_pct="$usd_change_pct"
+        jpy_change_pct="$usd_change_pct"
+        krw_change_pct="$usd_change_pct"
+        idr_change_pct="$usd_change_pct"
         
-        echo -e "USD: ${WHITE}\$$(printf "%'12.2f" "$usd_price")${NC} $change_text"
-        echo -e "EUR: ${WHITE}€$(printf "%'12.2f" "$eur_price")${NC}"
-        echo -e "GBP: ${WHITE}£$(printf "%'12.2f" "$gbp_price")${NC}"
-        echo -e "SGD: ${WHITE}S\$$(printf "%'11.2f" "$sgd_price")${NC}"
-        echo -e "CHF: ${WHITE}CHF$(printf "%'9.2f" "$chf_price")${NC}"
-        echo -e "JPY: ${WHITE}¥$(printf "%'11.0f" "$jpy_price")${NC}"
-        echo -e "KRW: ${WHITE}₩$(printf "%'11.0f" "$krw_price")${NC}"
-        echo -e "IDR: ${WHITE}Rp.$(printf "%'9.0f" "$idr_price")${NC}"
+        # Calculate raw currency changes
+        eur_change_raw=$(echo "scale=2; $eur_price * $eur_change_pct / 100" | bc 2>/dev/null || echo "0")
+        gbp_change_raw=$(echo "scale=2; $gbp_price * $gbp_change_pct / 100" | bc 2>/dev/null || echo "0")
+        sgd_change_raw=$(echo "scale=2; $sgd_price * $sgd_change_pct / 100" | bc 2>/dev/null || echo "0")
+        chf_change_raw=$(echo "scale=2; $chf_price * $chf_change_pct / 100" | bc 2>/dev/null || echo "0")
+        jpy_change_raw=$(echo "scale=0; $jpy_price * $jpy_change_pct / 100" | bc 2>/dev/null || echo "0")
+        krw_change_raw=$(echo "scale=0; $krw_price * $krw_change_pct / 100" | bc 2>/dev/null || echo "0")
+        idr_change_raw=$(echo "scale=0; $idr_price * $idr_change_pct / 100" | bc 2>/dev/null || echo "0")
+        
+        # Function to format change for any currency with both percentage and raw values
+        format_change() {
+            local change_pct="$1"
+            local change_raw="$2"
+            local currency_symbol="$3"
+            local change_abs
+            local change_color
+            local change_symbol
+            
+            # Handle null or empty values
+            if [[ "$change_pct" == "null" || "$change_pct" == "" ]]; then
+                change_pct="0"
+            fi
+            if [[ "$change_raw" == "null" || "$change_raw" == "" ]]; then
+                change_raw="0"
+            fi
+            
+            # Calculate absolute value
+            change_abs=$(echo "$change_pct" | sed 's/-//' | bc 2>/dev/null || echo "0")
+            
+            # Determine color and symbol
+            if (( $(echo "$change_pct > 0" | bc -l 2>/dev/null || echo 0) )); then
+                change_color=$GREEN
+                change_symbol="▲"
+            elif (( $(echo "$change_pct < 0" | bc -l 2>/dev/null || echo 0) )); then
+                change_color=$RED
+                change_symbol="▼"
+            else
+                change_color=$YELLOW
+                change_symbol="═"
+            fi
+            
+            # Format the percentage change
+            if (( $(echo "$change_abs > 0.01" | bc 2>/dev/null || echo 0) )); then
+                pct_formatted=$(printf "%.2f" "$change_pct" 2>/dev/null || echo "0.00")
+            else
+                pct_formatted=$(printf "%.3f" "$change_pct" 2>/dev/null || echo "0.000")
+            fi
+            
+            # Format raw change based on currency
+            if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "Rp." ]]; then
+                raw_formatted=$(printf "%.0f" "$change_raw" 2>/dev/null || echo "0")
+            else
+                raw_formatted=$(printf "%.2f" "$change_raw" 2>/dev/null || echo "0.00")
+            fi
+            
+            # Create plus/minus sign for raw value
+            if (( $(echo "$change_raw > 0" | bc -l 2>/dev/null || echo 0) )); then
+                raw_sign="+"
+            elif (( $(echo "$change_raw < 0" | bc -l 2>/dev/null || echo 0) )); then
+                raw_sign=""
+            else
+                raw_sign=""
+            fi
+            
+            echo "${change_color}$change_symbol $pct_formatted% ($raw_sign$currency_symbol$raw_formatted)${NC}"
+        }
+        
+        # Display all currencies with consistent formatting (15 chars width)
+        echo -e "USD: ${WHITE}\$$(printf "%'14.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$")"
+        echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€")"
+        echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£")"
+        echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$")"
+        echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF")"
+        echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥")"
+        echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩")"
+        echo -e "IDR: ${WHITE}Rp.$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.")"
     else
         echo -e "${RED}❌ Price data unavailable${NC}"
     fi

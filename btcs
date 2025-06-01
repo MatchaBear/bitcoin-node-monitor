@@ -108,7 +108,9 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 
 # Get current price data and market data separately for better reliability
 api_time=$(date '+%H:%M:%S')
-echo -e "${CYAN}📡 Last fetched: $api_time UTC${NC}"
+sg_time=$(TZ='Asia/Singapore' date '+%H:%M:%S')
+jkt_time=$(TZ='Asia/Jakarta' date '+%H:%M:%S')
+echo -e "${CYAN}📡 Last fetched: $api_time UTC | $sg_time SGT | $jkt_time WIB${NC}"
 
 # Try CoinGecko market data API for more complete information
 price_data=$(curl -s --connect-timeout 10 "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1" 2>/dev/null)
@@ -227,15 +229,15 @@ if [[ "$usd_price" != "0" ]]; then
         echo "${change_color}$change_symbol $pct_formatted% ($raw_sign$currency_symbol$raw_formatted)${NC}"
     }
     
-    # Display all currencies with their individual deltas (percentage + raw amount)
-    echo -e "USD: ${WHITE}\$$(printf "%'12.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$")"
-    echo -e "EUR: ${WHITE}€$(printf "%'12.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€")"
-    echo -e "GBP: ${WHITE}£$(printf "%'12.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£")"
-    echo -e "SGD: ${WHITE}S\$$(printf "%'11.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$")"
-    echo -e "CHF: ${WHITE}CHF$(printf "%'9.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF")"
-    echo -e "JPY: ${WHITE}¥$(printf "%'11.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥")"
-    echo -e "KRW: ${WHITE}₩$(printf "%'11.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩")"
-    echo -e "IDR: ${WHITE}Rp.$(printf "%'9.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.")"
+    # Display all currencies with consistent formatting (16 chars width for alignment)
+    echo -e "USD: ${WHITE}\$$(printf "%'14.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$")"
+    echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€")"
+    echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£")"
+    echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$")"
+    echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF")"
+    echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥")"
+    echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩")"
+    echo -e "IDR: ${WHITE}Rp.$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.")"
 else
     echo -e "${RED}❌ Price APIs currently unavailable${NC}"
     echo -e "${YELLOW}💡 This may be due to rate limiting or network issues${NC}"
