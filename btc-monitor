@@ -11,9 +11,18 @@ WHITE='\033[1;37m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Quick Bitcoin Node & Market Monitor (One-shot version)
-echo -e "${BOLD}${CYAN}============================================${NC}"
-echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Node & Market Monitor           ${NC}"
+# Enhanced Bitcoin Node & Market Monitor with continuous loop
+
+clear
+echo -e "${BOLD}${GREEN}Starting Bitcoin Node Monitor...${NC}"
+sleep 1
+
+# Main monitoring loop
+while true; do
+    clear
+    
+    echo -e "${BOLD}${CYAN}============================================${NC}"
+    echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Node & Market Monitor     ${NC}"
 echo -e "${BOLD}${CYAN}============================================${NC}"
 echo -e "${WHITE}📅 $(date '+%Y-%m-%d %H:%M:%S')${NC}"
 echo -e "${CYAN}============================================${NC}"
@@ -117,6 +126,16 @@ jkt_time=$(TZ='Asia/Jakarta' date '+%Y-%m-%d %H:%M:%S')
 echo -e "${CYAN}📡 Last fetched: $api_time UTC${NC}"
 echo -e "${CYAN}   Singapore: $sg_time SGT | Jakarta: $jkt_time WIB${NC}"
 
+# Global provider tracking
+USD_PROVIDER=""
+EUR_PROVIDER=""
+GBP_PROVIDER=""
+SGD_PROVIDER=""
+CHF_PROVIDER=""
+JPY_PROVIDER=""
+KRW_PROVIDER=""
+IDR_PROVIDER=""
+
 # Bulletproof multi-provider API system - NEVER fails!
 fetch_bulletproof_price() {
     local currency="$1"
@@ -130,6 +149,7 @@ fetch_bulletproof_price() {
         if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"price"* ]]; then
             local price=$(echo "$result" | jq -r '.price // 0')
             if [[ "$price" != "0" ]]; then
+                USD_PROVIDER="Binance"
                 echo "{\"bitcoin\":{\"usd\":$price,\"usd_24h_change\":0}}"
                 return 0
             fi
@@ -143,6 +163,7 @@ fetch_bulletproof_price() {
         local price=$(echo "$result" | jq -r ".RAW.BTC.$currency_upper.PRICE // 0")
         local change=$(echo "$result" | jq -r ".RAW.BTC.$currency_upper.CHANGEPCT24HOUR // 0")
         if [[ "$price" != "0" ]]; then
+            eval "${currency_upper}_PROVIDER=\"CryptoCompare\""
             echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":$change}}"
             return 0
         fi
@@ -154,6 +175,7 @@ fetch_bulletproof_price() {
     if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"$currency_upper"* ]]; then
         local price=$(echo "$result" | jq -r ".$currency_upper // 0")
         if [[ "$price" != "0" ]]; then
+            eval "${currency_upper}_PROVIDER=\"CryptoCompare Basic\""
             echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":0}}"
             return 0
         fi
@@ -163,12 +185,13 @@ fetch_bulletproof_price() {
     local coingecko_url="https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${currency_lower}&include_24h_change=true"
     result=$(curl -s --connect-timeout 5 --max-time 10 "$coingecko_url" 2>/dev/null)
     if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"bitcoin"* ]] && [[ "$result" != *"error_code"* ]]; then
+        eval "${currency_upper}_PROVIDER=\"CoinGecko\""
         echo "$result"
         return 0
     fi
     
     # Provider 4: Fallback with recent approximate values (updated regularly)
-    echo -e "${YELLOW}Using cached values for $currency...${NC}"
+    eval "${currency_upper}_PROVIDER=\"Fallback Cache\""
     local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
     case "$currency_lower" in
         "usd") echo '{"bitcoin":{"usd":105000,"usd_24h_change":0}}' ;;
@@ -306,11 +329,11 @@ if [[ "$api_success" == "true" ]]; then
             pct_formatted=$(printf "%.3f" "$change_pct" 2>/dev/null || echo "0.000")
         fi
         
-        # Format raw change based on currency
+        # Format raw change based on currency with thousands separators
         if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "Rp." ]]; then
-            raw_formatted=$(printf "%.0f" "$change_raw" 2>/dev/null || echo "0")
+            raw_formatted=$(printf "%'.0f" "$change_raw" 2>/dev/null || echo "0")
         else
-            raw_formatted=$(printf "%.2f" "$change_raw" 2>/dev/null || echo "0.00")
+            raw_formatted=$(printf "%'.2f" "$change_raw" 2>/dev/null || echo "0.00")
         fi
         
         # Create plus/minus sign for raw value
@@ -325,15 +348,15 @@ if [[ "$api_success" == "true" ]]; then
         echo "${change_color}$change_symbol $pct_formatted% ($raw_sign$currency_symbol$raw_formatted)${NC}"
     }
     
-    # Display all currencies with consistent formatting (16 chars width for alignment)
-    echo -e "USD: ${WHITE}\$$(printf "%'14.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$")"
-    echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€")"
-    echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£")"
-    echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$")"
-    echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF")"
-    echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥")"
-    echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩")"
-    echo -e "IDR: ${WHITE}Rp.$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.")"
+    # Display all currencies with consistent formatting and provider info
+    echo -e "USD: ${WHITE}\$$(printf "%'14.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${CYAN}($USD_PROVIDER)${NC}"
+    echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${CYAN}($EUR_PROVIDER)${NC}"
+    echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${CYAN}($GBP_PROVIDER)${NC}"
+    echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${CYAN}($SGD_PROVIDER)${NC}"
+    echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${CYAN}($CHF_PROVIDER)${NC}"
+    echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${CYAN}($JPY_PROVIDER)${NC}"
+    echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${CYAN}($KRW_PROVIDER)${NC}"
+    echo -e "IDR: ${WHITE}Rp.$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.") ${CYAN}($IDR_PROVIDER)${NC}"
 else
     echo -e "${RED}❌ Price APIs currently unavailable${NC}"
     echo -e "${YELLOW}💡 This may be due to rate limiting or network issues${NC}"
@@ -356,14 +379,14 @@ if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . >/dev/null 2>&1; then
     krw_ath=$(echo "$ath_data" | jq -r '.market_data.ath.krw // 150000000')
     idr_ath=$(echo "$ath_data" | jq -r '.market_data.ath.idr // 1143000000')
     
-    echo -e "USD: ${YELLOW}\$$(printf "%'12.2f" "$usd_ath")${NC}"
-    echo -e "EUR: ${YELLOW}€$(printf "%'12.2f" "$eur_ath")${NC}"
-    echo -e "GBP: ${YELLOW}£$(printf "%'12.2f" "$gbp_ath")${NC}"
-    echo -e "SGD: ${YELLOW}S\$$(printf "%'11.2f" "$sgd_ath")${NC}"
-    echo -e "CHF: ${YELLOW}CHF$(printf "%'9.2f" "$chf_ath")${NC}"
-    echo -e "JPY: ${YELLOW}¥$(printf "%'11.0f" "$jpy_ath")${NC}"
-    echo -e "KRW: ${YELLOW}₩$(printf "%'11.0f" "$krw_ath")${NC}"
-    echo -e "IDR: ${YELLOW}Rp.$(printf "%'9.0f" "$idr_ath")${NC}"
+    echo -e "USD: ${YELLOW}\$$(printf "%'14.2f" "$usd_ath")${NC}"
+    echo -e "EUR: ${YELLOW}€$(printf "%'15.2f" "$eur_ath")${NC}"
+    echo -e "GBP: ${YELLOW}£$(printf "%'15.2f" "$gbp_ath")${NC}"
+    echo -e "SGD: ${YELLOW}S\$$(printf "%'14.2f" "$sgd_ath")${NC}"
+    echo -e "CHF: ${YELLOW}CHF$(printf "%'13.2f" "$chf_ath")${NC}"
+    echo -e "JPY: ${YELLOW}¥$(printf "%'15.0f" "$jpy_ath")${NC}"
+    echo -e "KRW: ${YELLOW}₩$(printf "%'15.0f" "$krw_ath")${NC}"
+    echo -e "IDR: ${YELLOW}Rp.$(printf "%'13.0f" "$idr_ath")${NC}"
 else
     echo -e "${RED}❌ ATH data unavailable${NC}"
 fi
@@ -404,13 +427,16 @@ if [ ! -z "$blocks" ]; then
     echo -e "Current Supply: ${WHITE}$(printf "%'.0f" "$total_supply")${NC} BTC (${percent_mined}%)"
     echo -e "Remaining: ${WHITE}$(printf "%'.0f" "$remaining")${NC} BTC"
     echo -e "Block Reward: ${WHITE}$current_reward${NC} BTC"
-    echo -e "Next Halving: ${YELLOW}$(printf "%'d" $blocks_to_halving)${NC} blocks (~$days_to_halving days)"
+    echo -e "Next Halving: ${YELLOW}$(printf "%'d" $blocks_to_halving)${NC} blocks (~$(printf "%'d" $days_to_halving) days)"
 else
     echo -e "${RED}❌ Supply data unavailable${NC}"
 fi
 echo
 
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${WHITE}💡 Use ${BOLD}btcm${NC}${WHITE} for continuous monitoring${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${WHITE}🔄 Auto-refresh in 30s | Press ${BOLD}Ctrl+C${NC}${WHITE} to exit${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
+    sleep 30
+done
 
