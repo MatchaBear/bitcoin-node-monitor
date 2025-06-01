@@ -11,22 +11,13 @@ WHITE='\033[1;37m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Enhanced Bitcoin Node & Market Monitor with continuous loop
-
-clear
-echo -e "${BOLD}${GREEN}Starting Bitcoin Node Monitor...${NC}"
-sleep 1
-
-# Main monitoring loop
-while true; do
-    clear
-    
-    echo -e "${BOLD}${CYAN}============================================${NC}"
-    echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Node & Market Monitor     ${NC}"
-    echo -e "${BOLD}${CYAN}============================================${NC}"
-    echo -e "${WHITE}📅 $(date '+%Y-%m-%d %H:%M:%S')${NC}"
-    echo -e "${CYAN}============================================${NC}"
-    echo
+# Quick Bitcoin Node & Market Monitor (One-shot version)
+echo -e "${BOLD}${CYAN}============================================${NC}"
+echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Node & Market Monitor           ${NC}"
+echo -e "${BOLD}${CYAN}============================================${NC}"
+echo -e "${WHITE}📅 $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+echo -e "${CYAN}============================================${NC}"
+echo
 
 # Get all data in one go for efficiency
 sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getblockchaininfo 2>/dev/null)
@@ -145,8 +136,20 @@ fetch_bulletproof_price() {
         fi
     fi
     
-    # Provider 2: CryptoCompare (reliable, good for multiple currencies)
-    local cryptocompare_url="https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=$currency_upper"
+    # Provider 2: CryptoCompare with 24h change data
+    local cryptocompare_url="https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=$currency_upper"
+    result=$(curl -s --connect-timeout 5 --max-time 10 "$cryptocompare_url" 2>/dev/null)
+    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"CHANGEPCT24HOUR"* ]]; then
+        local price=$(echo "$result" | jq -r ".RAW.BTC.$currency_upper.PRICE // 0")
+        local change=$(echo "$result" | jq -r ".RAW.BTC.$currency_upper.CHANGEPCT24HOUR // 0")
+        if [[ "$price" != "0" ]]; then
+            echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":$change}}"
+            return 0
+        fi
+    fi
+    
+    # Fallback to simple price API
+    cryptocompare_url="https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=$currency_upper"
     result=$(curl -s --connect-timeout 5 --max-time 10 "$cryptocompare_url" 2>/dev/null)
     if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"$currency_upper"* ]]; then
         local price=$(echo "$result" | jq -r ".$currency_upper // 0")
@@ -181,19 +184,16 @@ fetch_bulletproof_price() {
     return 0
 }
 
-# ATH data with multiple providers
+# ATH data with multiple providers  
 fetch_bulletproof_ath() {
-    echo -e "${CYAN}Fetching ATH data from multiple sources...${NC}"
-    
-    # Try CoinGecko first
-    local result=$(curl -s --connect-timeout 8 --max-time 15 "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false" 2>/dev/null)
-    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"ath"* ]]; then
+    # Try CoinGecko first (no debug message to reduce output)
+    local result=$(curl -s --connect-timeout 5 --max-time 10 "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false" 2>/dev/null)
+    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"market_data"* ]] && [[ "$result" != *"error_code"* ]]; then
         echo "$result"
         return 0
     fi
     
-    # Fallback with known ATH values
-    echo -e "${YELLOW}Using known ATH values...${NC}"
+    # Fallback with known ATH values (silent fallback)
     cat << 'EOF'
 {
   "market_data": {
@@ -410,10 +410,7 @@ else
 fi
 echo
 
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${WHITE}🔄 Auto-refresh in 30s | Press ${BOLD}Ctrl+C${NC}${WHITE} to exit${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    
-    sleep 30
-done
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${WHITE}💡 Use ${BOLD}btcm${NC}${WHITE} for continuous monitoring${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
