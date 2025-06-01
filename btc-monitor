@@ -101,10 +101,12 @@ show_enhanced_dashboard() {
             echo -e "   ${RED}❌ Could not determine public IP${NC}"
         fi
         
-        # Show peer IP addresses
-        echo -e "   ${CYAN}Connected Peers:${NC}"
+        # Show peer IP addresses with detailed count explanation
+        echo -e "   ${CYAN}Connected Peers (showing top 5 of $connections):${NC}"
         peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getpeerinfo 2>/dev/null | jq -r '.[].addr' | head -5)
-        if [ ! -z "$peer_ips" ]; then
+        peer_count=$(echo "$peer_ips" | wc -l | tr -d ' ')
+        
+        if [ ! -z "$peer_ips" ] && [ "$peer_count" -gt 0 ]; then
             echo "$peer_ips" | while read ip; do
                 if [ ! -z "$ip" ]; then
                     # Extract just IP without port for geolocation hint
@@ -112,6 +114,15 @@ show_enhanced_dashboard() {
                     echo -e "     ${WHITE}$ip${NC} ${CYAN}($clean_ip)${NC}"
                 fi
             done
+            
+            # Explain peer count discrepancy
+            if [ "$connections" -gt 5 ]; then
+                hidden_peers=$((connections - 5))
+                echo -e "     ${YELLOW}... and $hidden_peers more peers (hidden for brevity)${NC}"
+            fi
+            
+            # Professional explanation
+            echo -e "     ${CYAN}💡 Total: $connections peers (inbound+outbound connections)${NC}"
         else
             echo -e "     ${YELLOW}No peer data available${NC}"
         fi
@@ -124,15 +135,39 @@ show_enhanced_dashboard() {
     echo -e "${BOLD}${PURPLE}💰 MARKET DATA ${CYAN}(Live CoinGecko API)${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     
-    # Get current price data and market data separately for better reliability
-    api_time=$(date '+%H:%M:%S')
+    # Get current price data with proper timezone handling
+    api_time=$(TZ='UTC' date '+%H:%M:%S')
     sg_time=$(TZ='Asia/Singapore' date '+%H:%M:%S')
     jkt_time=$(TZ='Asia/Jakarta' date '+%H:%M:%S')
     echo -e "${CYAN}📡 Last fetched: $api_time UTC | $sg_time SGT | $jkt_time WIB${NC}"
     
-    # Try CoinGecko market data API for more complete information
-    price_data=$(curl -s --connect-timeout 10 "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1" 2>/dev/null)
-    basic_price=$(curl -s --connect-timeout 10 "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur,gbp,sgd,chf,jpy,krw,idr" 2>/dev/null)
+    # Professional API retry mechanism with exponential backoff
+    fetch_with_retry() {
+        local url="$1"
+        local max_attempts=3
+        local delay=1
+        
+        for attempt in $(seq 1 $max_attempts); do
+            local result=$(curl -s --connect-timeout 15 --max-time 30 "$url" 2>/dev/null)
+            
+            if [[ ! -z "$result" && "$result" != "null" && "$result" != "{}" ]]; then
+                echo "$result"
+                return 0
+            fi
+            
+            if [ $attempt -lt $max_attempts ]; then
+                sleep $delay
+                delay=$((delay * 2))  # Exponential backoff
+            fi
+        done
+        
+        echo "FAILED"
+        return 1
+    }
+    
+    # Fetch market data with professional retry
+    price_data=$(fetch_with_retry "https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=1")
+    basic_price=$(fetch_with_retry "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur,gbp,sgd,chf,jpy,krw,idr")
     # Calculate 24h change from market chart data and get current prices
     if [[ $basic_price == *"usd"* ]]; then
         # Get current prices
