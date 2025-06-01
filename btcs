@@ -65,12 +65,18 @@ echo
 echo -e "${BOLD}${PURPLE}💰 MARKET DATA${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-# Get price data
-price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,sgd,idr&include_24h_change=true")
+# Get price data for multiple currencies
+price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,sgd,idr,eur,gbp,chf,jpy,krw&include_24h_change=true")
 if [[ $price_data == *"usd"* ]]; then
+    # Current prices
     usd_price=$(echo "$price_data" | jq -r '.bitcoin.usd // 0')
     sgd_price=$(echo "$price_data" | jq -r '.bitcoin.sgd // 0')
     idr_price=$(echo "$price_data" | jq -r '.bitcoin.idr // 0')
+    eur_price=$(echo "$price_data" | jq -r '.bitcoin.eur // 0')
+    gbp_price=$(echo "$price_data" | jq -r '.bitcoin.gbp // 0')
+    chf_price=$(echo "$price_data" | jq -r '.bitcoin.chf // 0')
+    jpy_price=$(echo "$price_data" | jq -r '.bitcoin.jpy // 0')
+    krw_price=$(echo "$price_data" | jq -r '.bitcoin.krw // 0')
     usd_change=$(echo "$price_data" | jq -r '.bitcoin.usd_24h_change // 0')
     
     # Color for 24h change
@@ -86,10 +92,44 @@ if [[ $price_data == *"usd"* ]]; then
     fi
     
     echo -e "USD: ${WHITE}\$$(printf "%'12.2f" "$usd_price")${NC} ${change_color}$change_symbol $(printf "%.2f" "$usd_change")%%${NC}"
+    echo -e "EUR: ${WHITE}€$(printf "%'12.2f" "$eur_price")${NC}"
+    echo -e "GBP: ${WHITE}£$(printf "%'12.2f" "$gbp_price")${NC}"
     echo -e "SGD: ${WHITE}S\$$(printf "%'11.2f" "$sgd_price")${NC}"
-    echo -e "IDR: ${WHITE}Rp.$(printf "%'10.0f" "$idr_price")${NC}"
+    echo -e "CHF: ${WHITE}CHF$(printf "%'9.2f" "$chf_price")${NC}"
+    echo -e "JPY: ${WHITE}¥$(printf "%'11.0f" "$jpy_price")${NC}"
+    echo -e "KRW: ${WHITE}₩$(printf "%'11.0f" "$krw_price")${NC}"
+    echo -e "IDR: ${WHITE}Rp.$(printf "%'9.0f" "$idr_price")${NC}"
 else
     echo -e "${RED}❌ Price data unavailable${NC}"
+fi
+echo
+
+# ATH Section (separate)
+echo -e "${BOLD}${PURPLE}📊 ALL-TIME HIGH (ATH)${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+# Get ATH data
+ath_data=$(curl -s "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false")
+if [[ $ath_data == *"ath"* ]]; then
+    usd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd // 73817')
+    eur_ath=$(echo "$ath_data" | jq -r '.market_data.ath.eur // 68000')
+    gbp_ath=$(echo "$ath_data" | jq -r '.market_data.ath.gbp // 58000')
+    sgd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.sgd // 98564')
+    chf_ath=$(echo "$ath_data" | jq -r '.market_data.ath.chf // 68000')
+    jpy_ath=$(echo "$ath_data" | jq -r '.market_data.ath.jpy // 11500000')
+    krw_ath=$(echo "$ath_data" | jq -r '.market_data.ath.krw // 150000000')
+    idr_ath=$(echo "$ath_data" | jq -r '.market_data.ath.idr // 1143000000')
+    
+    echo -e "USD: ${YELLOW}\$$(printf "%'12.2f" "$usd_ath")${NC}"
+    echo -e "EUR: ${YELLOW}€$(printf "%'12.2f" "$eur_ath")${NC}"
+    echo -e "GBP: ${YELLOW}£$(printf "%'12.2f" "$gbp_ath")${NC}"
+    echo -e "SGD: ${YELLOW}S\$$(printf "%'11.2f" "$sgd_ath")${NC}"
+    echo -e "CHF: ${YELLOW}CHF$(printf "%'9.2f" "$chf_ath")${NC}"
+    echo -e "JPY: ${YELLOW}¥$(printf "%'11.0f" "$jpy_ath")${NC}"
+    echo -e "KRW: ${YELLOW}₩$(printf "%'11.0f" "$krw_ath")${NC}"
+    echo -e "IDR: ${YELLOW}Rp.$(printf "%'9.0f" "$idr_ath")${NC}"
+else
+    echo -e "${RED}❌ ATH data unavailable${NC}"
 fi
 echo
 
@@ -125,8 +165,8 @@ if [ ! -z "$blocks" ]; then
     blocks_to_halving=$((next_halving - current_height))
     days_to_halving=$((blocks_to_halving * 10 / 1440))
     
-    echo -e "Current Supply: ${WHITE}$(printf "%.0f" "$total_supply")${NC} BTC (${percent_mined}%)"
-    echo -e "Remaining: ${WHITE}$(printf "%.0f" "$remaining")${NC} BTC"
+    echo -e "Current Supply: ${WHITE}$(printf "%'.0f" "$total_supply")${NC} BTC (${percent_mined}%)"
+    echo -e "Remaining: ${WHITE}$(printf "%'.0f" "$remaining")${NC} BTC"
     echo -e "Block Reward: ${WHITE}$current_reward${NC} BTC"
     echo -e "Next Halving: ${YELLOW}$(printf "%'d" $blocks_to_halving)${NC} blocks (~$days_to_halving days)"
 else
