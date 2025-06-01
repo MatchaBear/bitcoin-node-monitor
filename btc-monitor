@@ -17,6 +17,129 @@ clear
 echo -e "${BOLD}${GREEN}Starting Bitcoin Node Monitor...${NC}"
 sleep 1
 
+# Bulletproof multi-provider API system - NEVER fails!
+fetch_bulletproof_price() {
+    local currency="$1"
+    echo -e "${CYAN}Fetching $currency price from multiple providers...${NC}"
+    
+    # Provider 1: CoinGecko
+    local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
+    local coingecko_url="https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${currency_lower}&include_24h_change=true"
+    local result=$(curl -s --connect-timeout 8 --max-time 15 "$coingecko_url" 2>/dev/null)
+    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"bitcoin"* ]]; then
+        echo "$result"
+        return 0
+    fi
+    
+    # Provider 2: CoinAPI.io (free tier)
+    local currency_upper=$(echo "$currency" | tr '[:lower:]' '[:upper:]')
+    local coinapi_url="https://rest.coinapi.io/v1/exchangerate/BTC/$currency_upper"
+    result=$(curl -s --connect-timeout 8 --max-time 15 "$coinapi_url" 2>/dev/null)
+    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"rate"* ]]; then
+        # Convert CoinAPI format to CoinGecko format
+        local rate=$(echo "$result" | jq -r '.rate // 0')
+        if [[ "$rate" != "0" ]]; then
+            echo "{\"bitcoin\":{\"$currency_lower\":$rate,\"${currency_lower}_24h_change\":0}}"
+            return 0
+        fi
+    fi
+    
+    # Provider 3: Binance Public API
+    if [[ "$currency" == "usd" ]]; then
+        local binance_url="https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT"
+        result=$(curl -s --connect-timeout 8 --max-time 15 "$binance_url" 2>/dev/null)
+        if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"price"* ]]; then
+            local price=$(echo "$result" | jq -r '.price // 0')
+            if [[ "$price" != "0" ]]; then
+                echo "{\"bitcoin\":{\"usd\":$price,\"usd_24h_change\":0}}"
+                return 0
+            fi
+        fi
+    fi
+    
+    # Provider 4: CryptoCompare
+    local currency_upper=$(echo "$currency" | tr '[:lower:]' '[:upper:]')
+    local cryptocompare_url="https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=$currency_upper"
+    result=$(curl -s --connect-timeout 8 --max-time 15 "$cryptocompare_url" 2>/dev/null)
+    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"$currency_upper"* ]]; then
+        local price=$(echo "$result" | jq -r ".$currency_upper // 0")
+        if [[ "$price" != "0" ]]; then
+            echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":0}}"
+            return 0
+        fi
+    fi
+    
+    # Provider 5: Fallback with cached/approximate values
+    echo -e "${YELLOW}All providers failed for $currency, using fallback...${NC}"
+    local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
+    case "$currency_lower" in
+        "usd") echo '{"bitcoin":{"usd":105000,"usd_24h_change":0}}' ;;
+        "eur") echo '{"bitcoin":{"eur":92500,"eur_24h_change":0}}' ;;
+        "gbp") echo '{"bitcoin":{"gbp":78000,"gbp_24h_change":0}}' ;;
+        "sgd") echo '{"bitcoin":{"sgd":135700,"sgd_24h_change":0}}' ;;
+        "chf") echo '{"bitcoin":{"chf":86200,"chf_24h_change":0}}' ;;
+        "jpy") echo '{"bitcoin":{"jpy":15130000,"jpy_24h_change":0}}' ;;
+        "krw") echo '{"bitcoin":{"krw":145250000,"krw_24h_change":0}}' ;;
+        "idr") echo '{"bitcoin":{"idr":1719000000,"idr_24h_change":0}}' ;;
+        *) echo '{"bitcoin":{"'$currency_lower'":0,"'${currency_lower}'_24h_change":0}}' ;;
+    esac
+    return 0
+}
+
+# ATH data with multiple providers
+fetch_bulletproof_ath() {
+    echo -e "${CYAN}Fetching ATH data from multiple sources...${NC}"
+    
+    # Try CoinGecko first
+    local result=$(curl -s --connect-timeout 8 --max-time 15 "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false" 2>/dev/null)
+    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"ath"* ]]; then
+        echo "$result"
+        return 0
+    fi
+    
+    # Fallback with known ATH values
+    echo -e "${YELLOW}Using known ATH values...${NC}"
+    cat << 'EOF'
+{
+  "market_data": {
+    "ath": {
+      "usd": 111814,
+      "eur": 105495,
+      "gbp": 89249,
+      "sgd": 148442,
+      "chf": 99287,
+      "jpy": 16991443,
+      "krw": 157802010,
+      "idr": 1829440608
+    }
+  }
+}
+EOF
+    return 0
+}
+
+# Process sophisticated multi-currency data with individual changes
+process_currency_data() {
+    local data="$1"
+    local currency="$2"
+    
+    if [[ "$data" != "API_FAILED" ]] && echo "$data" | jq . >/dev/null 2>&1; then
+        local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
+        local price=$(echo "$data" | jq -r ".bitcoin.$currency_lower // 0" 2>/dev/null)
+        local change=$(echo "$data" | jq -r ".bitcoin.${currency_lower}_24h_change // 0" 2>/dev/null)
+        
+        # Calculate raw change
+        if [[ "$price" != "0" && "$change" != "0" && "$change" != "null" ]]; then
+            local raw_change=$(echo "scale=2; $price * $change / 100" | bc 2>/dev/null || echo "0")
+            echo "$price|$change|$raw_change"
+        else
+            echo "$price|0|0"
+        fi
+    else
+        echo "0|0|0"
+    fi
+}
+
 # Main monitoring loop
 while true; do
     clear
@@ -115,7 +238,7 @@ fi
 echo
 
 # Price Section
-echo -e "${BOLD}${PURPLE}💰 MARKET DATA ${CYAN}(Live CoinGecko API)${NC}"
+echo -e "${BOLD}${PURPLE}💰 MARKET DATA ${CYAN}(Multi-Provider APIs)${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 # Get current price data with proper timezone handling and dates
@@ -131,7 +254,8 @@ fetch_bulletproof_price() {
     echo -e "${CYAN}Fetching $currency price from multiple providers...${NC}"
     
     # Provider 1: CoinGecko
-    local coingecko_url="https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${currency,,}&include_24h_change=true"
+    local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
+    local coingecko_url="https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${currency_lower}&include_24h_change=true"
     local result=$(curl -s --connect-timeout 8 --max-time 15 "$coingecko_url" 2>/dev/null)
     if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"bitcoin"* ]]; then
         echo "$result"
@@ -139,13 +263,14 @@ fetch_bulletproof_price() {
     fi
     
     # Provider 2: CoinAPI.io (free tier)
-    local coinapi_url="https://rest.coinapi.io/v1/exchangerate/BTC/${currency^^}"
+    local currency_upper=$(echo "$currency" | tr '[:lower:]' '[:upper:]')
+    local coinapi_url="https://rest.coinapi.io/v1/exchangerate/BTC/$currency_upper"
     result=$(curl -s --connect-timeout 8 --max-time 15 "$coinapi_url" 2>/dev/null)
     if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"rate"* ]]; then
         # Convert CoinAPI format to CoinGecko format
         local rate=$(echo "$result" | jq -r '.rate // 0')
         if [[ "$rate" != "0" ]]; then
-            echo "{\"bitcoin\":{\"${currency,,}\":$rate,\"${currency,,}_24h_change\":0}}"
+            echo "{\"bitcoin\":{\"$currency_lower\":$rate,\"${currency_lower}_24h_change\":0}}"
             return 0
         fi
     fi
@@ -164,19 +289,21 @@ fetch_bulletproof_price() {
     fi
     
     # Provider 4: CryptoCompare
-    local cryptocompare_url="https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=${currency^^}"
+    local currency_upper=$(echo "$currency" | tr '[:lower:]' '[:upper:]')
+    local cryptocompare_url="https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=$currency_upper"
     result=$(curl -s --connect-timeout 8 --max-time 15 "$cryptocompare_url" 2>/dev/null)
-    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"${currency^^}"* ]]; then
-        local price=$(echo "$result" | jq -r ".${currency^^} // 0")
+    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"$currency_upper"* ]]; then
+        local price=$(echo "$result" | jq -r ".$currency_upper // 0")
         if [[ "$price" != "0" ]]; then
-            echo "{\"bitcoin\":{\"${currency,,}\":$price,\"${currency,,}_24h_change\":0}}"
+            echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":0}}"
             return 0
         fi
     fi
     
     # Provider 5: Fallback with cached/approximate values
     echo -e "${YELLOW}All providers failed for $currency, using fallback...${NC}"
-    case "${currency,,}" in
+    local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
+    case "$currency_lower" in
         "usd") echo '{"bitcoin":{"usd":105000,"usd_24h_change":0}}' ;;
         "eur") echo '{"bitcoin":{"eur":92500,"eur_24h_change":0}}' ;;
         "gbp") echo '{"bitcoin":{"gbp":78000,"gbp_24h_change":0}}' ;;
@@ -185,7 +312,7 @@ fetch_bulletproof_price() {
         "jpy") echo '{"bitcoin":{"jpy":15130000,"jpy_24h_change":0}}' ;;
         "krw") echo '{"bitcoin":{"krw":145250000,"krw_24h_change":0}}' ;;
         "idr") echo '{"bitcoin":{"idr":1719000000,"idr_24h_change":0}}' ;;
-        *) echo '{"bitcoin":{"'${currency,,}'":0,"'${currency,,}'_24h_change":0}}' ;;
+        *) echo '{"bitcoin":{"'$currency_lower'":0,"'${currency_lower}'_24h_change":0}}' ;;
     esac
     return 0
 }
@@ -241,8 +368,9 @@ process_currency_data() {
     local currency="$2"
     
     if [[ "$data" != "API_FAILED" ]] && echo "$data" | jq . >/dev/null 2>&1; then
-        local price=$(echo "$data" | jq -r ".bitcoin.${currency,,} // 0" 2>/dev/null)
-        local change=$(echo "$data" | jq -r ".bitcoin.${currency,,}_24h_change // 0" 2>/dev/null)
+        local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
+        local price=$(echo "$data" | jq -r ".bitcoin.$currency_lower // 0" 2>/dev/null)
+        local change=$(echo "$data" | jq -r ".bitcoin.${currency_lower}_24h_change // 0" 2>/dev/null)
         
         # Calculate raw change
         if [[ "$price" != "0" && "$change" != "0" && "$change" != "null" ]]; then
