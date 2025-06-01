@@ -62,11 +62,15 @@ fi
 echo
 
 # Price Section
-echo -e "${BOLD}${PURPLE}💰 MARKET DATA${NC}"
+echo -e "${BOLD}${PURPLE}💰 MARKET DATA ${CYAN}(Live CoinGecko API)${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-# Get price data for multiple currencies
-price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,sgd,idr,eur,gbp,chf,jpy,krw&include_24h_change=true")
+# Get price data for multiple currencies with timestamp
+price_data=$(curl -s "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,sgd,idr,eur,gbp,chf,jpy,krw&include_24h_change=true&include_last_updated_at=true")
+
+# Display API fetch time
+api_time=$(date '+%H:%M:%S')
+echo -e "${CYAN}📡 Last fetched: $api_time UTC${NC}"
 if [[ $price_data == *"usd"* ]]; then
     # Current prices
     usd_price=$(echo "$price_data" | jq -r '.bitcoin.usd // 0')
@@ -91,7 +95,19 @@ if [[ $price_data == *"usd"* ]]; then
         change_symbol="─"
     fi
     
-    echo -e "USD: ${WHITE}\$$(printf "%'12.2f" "$usd_price")${NC} ${change_color}$change_symbol $(printf "%.2f" "$usd_change")%%${NC}"
+    # Format change with better logic and check for actual changes
+    change_abs=$(echo "$usd_change" | sed 's/-//' | bc 2>/dev/null || echo "0")
+    if [[ "$usd_change" != "null" && "$usd_change" != "0" && $(echo "$change_abs > 0.01" | bc) == "1" ]]; then
+        change_formatted=$(printf "%.2f" "$usd_change")
+        change_text="${change_color}$change_symbol $change_formatted%${NC}"
+    elif [[ "$usd_change" != "null" && "$usd_change" != "0" ]]; then
+        change_formatted=$(printf "%.3f" "$usd_change")
+        change_text="${change_color}$change_symbol $change_formatted%${NC}"
+    else
+        change_text="${YELLOW}■ Stable${NC}"
+    fi
+    
+    echo -e "USD: ${WHITE}\$$(printf "%'12.2f" "$usd_price")${NC} $change_text"
     echo -e "EUR: ${WHITE}€$(printf "%'12.2f" "$eur_price")${NC}"
     echo -e "GBP: ${WHITE}£$(printf "%'12.2f" "$gbp_price")${NC}"
     echo -e "SGD: ${WHITE}S\$$(printf "%'11.2f" "$sgd_price")${NC}"
