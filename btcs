@@ -208,28 +208,45 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
     
     # Show public IP first (VPN detection for network engineers!) 🕵️‍♂️
     echo -e "${CYAN}🌐 Network Information:${NC}"
-    
-    # Get public IP with fallback methods
-    public_ip=$(curl -s --connect-timeout 5 "https://ipinfo.io/ip" 2>/dev/null || curl -s --connect-timeout 5 "https://api.ipify.org" 2>/dev/null || curl -s --connect-timeout 5 "https://icanhazip.com" 2>/dev/null | tr -d '\n')
-    
-    if [ ! -z "$public_ip" ] && [[ "$public_ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
-        # Get ISP/location info
-        ip_info=$(curl -s --connect-timeout 5 "https://ipinfo.io/$public_ip" 2>/dev/null)
-        if [[ $ip_info == *"org"* ]]; then
-            isp=$(echo "$ip_info" | jq -r '.org // "Unknown ISP"' | cut -c1-30)
-            city=$(echo "$ip_info" | jq -r '.city // "Unknown"')
-            country=$(echo "$ip_info" | jq -r '.country // "Unknown"')
-            echo -e "   ${WHITE}Your Public IP:${NC} ${GREEN}$public_ip${NC} ${CYAN}($isp, $city $country)${NC}"
-        else
-            echo -e "   ${WHITE}Your Public IP:${NC} ${GREEN}$public_ip${NC} ${CYAN}(ISP lookup failed)${NC}"
-        fi
-        
-        # VPN Detection hint
-        if [[ "$isp" == *"VPN"* ]] || [[ "$isp" == *"Proxy"* ]] || [[ "$isp" == *"Virtual"* ]] || [[ "$isp" == *"Private"* ]]; then
-            echo -e "   ${YELLOW}🔒 VPN/Proxy detected!${NC}"
-        fi
+
+    # ✅ Solved the ipinfo.io ratelimit issue with token from ipinfo.io (free signup)
+    IPINFO_TOKEN="6902bfdd9ec8e3"
+
+    public_ip=$(curl -s --connect-timeout 5 "https://ipinfo.io/ip" 2>/dev/null || \
+            curl -s --connect-timeout 5 "https://api.ipify.org" 2>/dev/null || \
+            curl -s --connect-timeout 5 "https://icanhazip.com" 2>/dev/null | tr -d '\n')
+
+    if [[ -n "$public_ip" && "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    # 🌍 Coba ambil info ISP dari ipinfo.io (dengan token)
+    ip_info=$(curl -s --connect-timeout 5 "https://ipinfo.io/$public_ip?token=$IPINFO_TOKEN" 2>/dev/null)
+
+    isp=$(echo "$ip_info" | jq -r '.org // empty')
+    city=$(echo "$ip_info" | jq -r '.city // empty')
+    country=$(echo "$ip_info" | jq -r '.country // empty')
+    source_used="ipinfo.io"
+
+    # 🔁 Fallback ke ipapi.co kalau gagal / kosong
+    if [[ -z "$isp" || "$isp" == "null" ]]; then
+        ip_info_alt=$(curl -s --connect-timeout 5 "https://ipapi.co/$public_ip/json/" 2>/dev/null)
+        isp=$(echo "$ip_info_alt" | jq -r '.org // .org_name // "Unknown ISP"')
+        city=$(echo "$ip_info_alt" | jq -r '.city // "Unknown"')
+        country=$(echo "$ip_info_alt" | jq -r '.country // "Unknown"')
+        source_used="ipapi.co"
+    fi
+
+    # ✂️ Potong panjang ISP kalau kepanjangan
+    isp=$(echo "$isp" | cut -c1-40)
+
+    echo -e "   ${WHITE}Your Public IP:${NC} ${GREEN}$public_ip${NC} ${CYAN}($isp, $city $country)${NC}"
+    echo -e "   ${BLUE}Info source:${NC} $source_used"
+
+    # 🔒 Deteksi VPN/Proxy berdasarkan keyword
+    if [[ "$isp" =~ VPN|Proxy|Virtual|Private ]]; then
+        echo -e "   ${YELLOW}🔒 VPN/Proxy detected!${NC}"
+    fi
+
     else
-        echo -e "   ${RED}❌ Could not determine public IP${NC}"
+    echo -e "   ${RED}❌ Could not determine public IP${NC}"
     fi
     
     # Show ALL peer IP addresses with country flags and names
@@ -247,7 +264,7 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
                 if [[ ! -z "$country_code" ]]; then
                     country_flag=$(get_country_flag "$country_code")
                     country_name=$(get_country_name "$country_code")
-                    echo -e "     ${country_flag} ${WHITE}$ip${NC} ${CYAN}($country_name)${NC}"
+                    echo -e "     ${country_flag}  ${WHITE}$ip${NC} ${CYAN}($country_name)${NC}"
                 else
                     echo -e "     🏳️ ${WHITE}$ip${NC} ${CYAN}(Unknown)${NC}"
                 fi
@@ -502,14 +519,14 @@ if [[ "$api_success" == "true" ]]; then
     }
     
     # Display all currencies with consistent formatting and provider info
-    echo -e "USD: ${WHITE}\$$(printf "%'14.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${CYAN}($USD_PROVIDER)${NC}"
+    echo -e "USD: ${WHITE}\$$(printf "%'15.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${CYAN}($USD_PROVIDER)${NC}"
     echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${CYAN}($EUR_PROVIDER)${NC}"
     echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${CYAN}($GBP_PROVIDER)${NC}"
     echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${CYAN}($SGD_PROVIDER)${NC}"
     echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${CYAN}($CHF_PROVIDER)${NC}"
     echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${CYAN}($JPY_PROVIDER)${NC}"
     echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${CYAN}($KRW_PROVIDER)${NC}"
-    echo -e "IDR: ${WHITE}Rp.$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.") ${CYAN}($IDR_PROVIDER)${NC}"
+    echo -e "IDR: ${WHITE}IDR$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.") ${CYAN}($IDR_PROVIDER)${NC}"
 else
     echo -e "${RED}❌ Price APIs currently unavailable${NC}"
     echo -e "${YELLOW}💡 This may be due to rate limiting or network issues${NC}"
@@ -532,14 +549,14 @@ if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . >/dev/null 2>&1; then
     krw_ath=$(echo "$ath_data" | jq -r '.market_data.ath.krw // 150000000')
     idr_ath=$(echo "$ath_data" | jq -r '.market_data.ath.idr // 1143000000')
     
-    echo -e "USD: ${YELLOW}\$$(printf "%'14.2f" "$usd_ath")${NC}"
+    echo -e "USD: ${YELLOW}\$$(printf "%'15.2f" "$usd_ath")${NC}"
     echo -e "EUR: ${YELLOW}€$(printf "%'15.2f" "$eur_ath")${NC}"
     echo -e "GBP: ${YELLOW}£$(printf "%'15.2f" "$gbp_ath")${NC}"
     echo -e "SGD: ${YELLOW}S\$$(printf "%'14.2f" "$sgd_ath")${NC}"
     echo -e "CHF: ${YELLOW}CHF$(printf "%'13.2f" "$chf_ath")${NC}"
     echo -e "JPY: ${YELLOW}¥$(printf "%'15.0f" "$jpy_ath")${NC}"
     echo -e "KRW: ${YELLOW}₩$(printf "%'15.0f" "$krw_ath")${NC}"
-    echo -e "IDR: ${YELLOW}Rp.$(printf "%'13.0f" "$idr_ath")${NC}"
+    echo -e "IDR: ${YELLOW}IDR$(printf "%'13.0f" "$idr_ath")${NC}"
 else
     echo -e "${RED}❌ ATH data unavailable${NC}"
 fi
