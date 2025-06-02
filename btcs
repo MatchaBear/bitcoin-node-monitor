@@ -209,46 +209,61 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
     # Show public IP first (VPN detection for network engineers!) 🕵️‍♂️
     echo -e "${CYAN}🌐 Network Information:${NC}"
 
-    # ✅ Solved the ipinfo.io ratelimit issue with token from ipinfo.io (free signup)
-    IPINFO_TOKEN="6902bfdd9ec8e3"
+    # Get public IP and ISP info using ipinfo.io and ipapi.co
+    get_ip_info() {
+        local IPINFO_TOKEN="6902bfdd9ec8e3"
+        local ip_file="/Users/bermekbukair/bitcoin/last_ip.txt"
+        local skip_ip_lookup=false
+        local source_used=""
 
-    public_ip=$(curl -s --connect-timeout 5 "https://ipinfo.io/ip" 2>/dev/null || \
-            curl -s --connect-timeout 5 "https://api.ipify.org" 2>/dev/null || \
-            curl -s --connect-timeout 5 "https://icanhazip.com" 2>/dev/null | tr -d '\n')
+        public_ip=$(curl -s --connect-timeout 5 https://api.ipify.org)
 
-    if [[ -n "$public_ip" && "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    # 🌍 Coba ambil info ISP dari ipinfo.io (dengan token)
-    ip_info=$(curl -s --connect-timeout 5 "https://ipinfo.io/$public_ip?token=$IPINFO_TOKEN" 2>/dev/null)
+        if [[ -z "$public_ip" || ! "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo -e "   ❌ Could not determine public IP — skip IP info"
+            return
+        fi
 
-    isp=$(echo "$ip_info" | jq -r '.org // empty')
-    city=$(echo "$ip_info" | jq -r '.city // empty')
-    country=$(echo "$ip_info" | jq -r '.country // empty')
-    source_used="ipinfo.io"
+        if [[ -f "$ip_file" ]]; then
+            prev_ip=$(cat "$ip_file")
+        else
+            prev_ip=""
+        fi
 
-    # 🔁 Fallback ke ipapi.co kalau gagal / kosong
-    if [[ -z "$isp" || "$isp" == "null" ]]; then
-        ip_info_alt=$(curl -s --connect-timeout 5 "https://ipapi.co/$public_ip/json/" 2>/dev/null)
-        isp=$(echo "$ip_info_alt" | jq -r '.org // .org_name // "Unknown ISP"')
-        city=$(echo "$ip_info_alt" | jq -r '.city // "Unknown"')
-        country=$(echo "$ip_info_alt" | jq -r '.country // "Unknown"')
-        source_used="ipapi.co"
-    fi
+        if [[ "$public_ip" == "$prev_ip" ]]; then
+            echo -e "   🔁 Public IP unchanged: $public_ip — skip ipinfo.io"
+            return
+        fi
 
-    # ✂️ Potong panjang ISP kalau kepanjangan
-    isp=$(echo "$isp" | cut -c1-40)
+        echo "$public_ip" > "$ip_file"
 
-    echo -e "   ${WHITE}Your Public IP:${NC} ${GREEN}$public_ip${NC} ${CYAN}($isp, $city $country)${NC}"
-    echo -e "   ${BLUE}Info source:${NC} $source_used"
+        ip_info=$(curl -s --connect-timeout 5 "https://ipinfo.io/$public_ip?token=$IPINFO_TOKEN")
+        isp=$(echo "$ip_info" | jq -r '.org // empty')
+        city=$(echo "$ip_info" | jq -r '.city // empty')
+        country=$(echo "$ip_info" | jq -r '.country // empty')
+        source_used="ipinfo.io"
 
-    # 🔒 Deteksi VPN/Proxy berdasarkan keyword
-    if [[ "$isp" =~ VPN|Proxy|Virtual|Private ]]; then
-        echo -e "   ${YELLOW}🔒 VPN/Proxy detected!${NC}"
-    fi
+        if [[ -z "$isp" || "$isp" == "null" ]]; then
+            ip_info_alt=$(curl -s --connect-timeout 5 "https://ipapi.co/$public_ip/json/")
+            isp=$(echo "$ip_info_alt" | jq -r '.org // .org_name // "Unknown ISP"')
+            city=$(echo "$ip_info_alt" | jq -r '.city // "Unknown"')
+            country=$(echo "$ip_info_alt" | jq -r '.country // "Unknown"')
+            source_used="ipapi.co"
+        fi
 
-    else
-    echo -e "   ${RED}❌ Could not determine public IP${NC}"
-    fi
-    
+        isp=$(echo "$isp" | cut -c1-40)
+
+        if [[ "$isp" =~ VPN|Proxy|Virtual|Private ]]; then
+            vpn_warn="   ${YELLOW}🔒 VPN/Proxy detected!${NC}"
+        fi
+
+        echo -e "   🌐 Your Public IP: ${GREEN}${public_ip}${NC} (${CYAN}${isp:-Unknown}, ${city:-Unknown} ${country:-Unknown}${NC})"
+        echo -e "   🔎 Info source: ${source_used}"
+        [[ -n "$vpn_warn" ]] && echo -e "$vpn_warn"
+    }
+
+    # 🧠 Tambahkan ini agar fungsi benar-benar dijalankan
+    get_ip_info
+
     # Show ALL peer IP addresses with country flags and names
     echo -e "   ${CYAN}Connected Peers (all $connections):${NC}"
     peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getpeerinfo 2>/dev/null | jq -r '.[].addr')
