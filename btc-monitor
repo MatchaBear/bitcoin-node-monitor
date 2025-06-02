@@ -11,6 +11,155 @@ WHITE='\033[1;37m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+# Country flag mapping function
+get_country_flag() {
+    local country_code="$1"
+    case "$country_code" in
+        "US") echo "🇺🇸" ;;
+        "CA") echo "🇨🇦" ;;
+        "GB") echo "🇬🇧" ;;
+        "DE") echo "🇩🇪" ;;
+        "FR") echo "🇫🇷" ;;
+        "NL") echo "🇳🇱" ;;
+        "SE") echo "🇸🇪" ;;
+        "CH") echo "🇨🇭" ;;
+        "AT") echo "🇦🇹" ;;
+        "FI") echo "🇫🇮" ;;
+        "NO") echo "🇳🇴" ;;
+        "DK") echo "🇩🇰" ;;
+        "IE") echo "🇮🇪" ;;
+        "BE") echo "🇧🇪" ;;
+        "IT") echo "🇮🇹" ;;
+        "ES") echo "🇪🇸" ;;
+        "PT") echo "🇵🇹" ;;
+        "RU") echo "🇷🇺" ;;
+        "CN") echo "🇨🇳" ;;
+        "JP") echo "🇯🇵" ;;
+        "KR") echo "🇰🇷" ;;
+        "SG") echo "🇸🇬" ;;
+        "HK") echo "🇭🇰" ;;
+        "TW") echo "🇹🇼" ;;
+        "AU") echo "🇦🇺" ;;
+        "NZ") echo "🇳🇿" ;;
+        "IN") echo "🇮🇳" ;;
+        "TH") echo "🇹🇭" ;;
+        "MY") echo "🇲🇾" ;;
+        "ID") echo "🇮🇩" ;;
+        "PH") echo "🇵🇭" ;;
+        "VN") echo "🇻🇳" ;;
+        "BR") echo "🇧🇷" ;;
+        "AR") echo "🇦🇷" ;;
+        "MX") echo "🇲🇽" ;;
+        "CL") echo "🇨🇱" ;;
+        "CO") echo "🇨🇴" ;;
+        "ZA") echo "🇿🇦" ;;
+        "EG") echo "🇪🇬" ;;
+        "IL") echo "🇮🇱" ;;
+        "TR") echo "🇹🇷" ;;
+        "UA") echo "🇺🇦" ;;
+        "PL") echo "🇵🇱" ;;
+        "CZ") echo "🇨🇿" ;;
+        "HU") echo "🇭🇺" ;;
+        "RO") echo "🇷🇴" ;;
+        "BG") echo "🇧🇬" ;;
+        "HR") echo "🇭🇷" ;;
+        "RS") echo "🇷🇸" ;;
+        "SK") echo "🇸🇰" ;;
+        "SI") echo "🇸🇮" ;;
+        "LT") echo "🇱🇹" ;;
+        "LV") echo "🇱🇻" ;;
+        "EE") echo "🇪🇪" ;;
+        "IS") echo "🇮🇸" ;;
+        "LU") echo "🇱🇺" ;;
+        "MT") echo "🇲🇹" ;;
+        "CY") echo "🇨🇾" ;;
+        *) echo "🏳️" ;;
+    esac
+}
+
+# Get country info from IP address
+get_country_info() {
+    local ip="$1"
+    local result=$(curl -s --connect-timeout 3 --max-time 5 "https://ipinfo.io/$ip/country" 2>/dev/null)
+    if [[ ! -z "$result" ]] && [[ ${#result} -eq 2 ]]; then
+        echo "$result"
+    else
+        # Fallback to ip-api.com
+        local result2=$(curl -s --connect-timeout 3 --max-time 5 "http://ip-api.com/json/$ip?fields=countryCode" 2>/dev/null)
+        if [[ ! -z "$result2" ]] && echo "$result2" | jq . > /dev/null 2>&1; then
+            echo "$result2" | jq -r '.countryCode // ""'
+        else
+            echo ""
+        fi
+    fi
+}
+
+# Get country name from country code
+get_country_name() {
+    local country_code="$1"
+    case "$country_code" in
+        "US") echo "United States" ;;
+        "CA") echo "Canada" ;;
+        "GB") echo "United Kingdom" ;;
+        "DE") echo "Germany" ;;
+        "FR") echo "France" ;;
+        "NL") echo "Netherlands" ;;
+        "SE") echo "Sweden" ;;
+        "CH") echo "Switzerland" ;;
+        "AT") echo "Austria" ;;
+        "FI") echo "Finland" ;;
+        "NO") echo "Norway" ;;
+        "DK") echo "Denmark" ;;
+        "IE") echo "Ireland" ;;
+        "BE") echo "Belgium" ;;
+        "IT") echo "Italy" ;;
+        "ES") echo "Spain" ;;
+        "PT") echo "Portugal" ;;
+        "RU") echo "Russia" ;;
+        "CN") echo "China" ;;
+        "JP") echo "Japan" ;;
+        "KR") echo "South Korea" ;;
+        "SG") echo "Singapore" ;;
+        "HK") echo "Hong Kong" ;;
+        "TW") echo "Taiwan" ;;
+        "AU") echo "Australia" ;;
+        "NZ") echo "New Zealand" ;;
+        "IN") echo "India" ;;
+        "TH") echo "Thailand" ;;
+        "MY") echo "Malaysia" ;;
+        "ID") echo "Indonesia" ;;
+        "PH") echo "Philippines" ;;
+        "VN") echo "Vietnam" ;;
+        "BR") echo "Brazil" ;;
+        "AR") echo "Argentina" ;;
+        "MX") echo "Mexico" ;;
+        "CL") echo "Chile" ;;
+        "CO") echo "Colombia" ;;
+        "ZA") echo "South Africa" ;;
+        "EG") echo "Egypt" ;;
+        "IL") echo "Israel" ;;
+        "TR") echo "Turkey" ;;
+        "UA") echo "Ukraine" ;;
+        "PL") echo "Poland" ;;
+        "CZ") echo "Czech Republic" ;;
+        "HU") echo "Hungary" ;;
+        "RO") echo "Romania" ;;
+        "BG") echo "Bulgaria" ;;
+        "HR") echo "Croatia" ;;
+        "RS") echo "Serbia" ;;
+        "SK") echo "Slovakia" ;;
+        "SI") echo "Slovenia" ;;
+        "LT") echo "Lithuania" ;;
+        "LV") echo "Latvia" ;;
+        "EE") echo "Estonia" ;;
+        "IS") echo "Iceland" ;;
+        "LU") echo "Luxembourg" ;;
+        "MT") echo "Malta" ;;
+        "CY") echo "Cyprus" ;;
+        *) echo "Unknown" ;;
+    esac
+}
+
 # Enhanced Bitcoin Node & Market Monitor with continuous loop
 
 clear
@@ -92,16 +241,25 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
         echo -e "   ${RED}❌ Could not determine public IP${NC}"
     fi
     
-    # Show ALL peer IP addresses (no hiding for brevity)
+    # Show ALL peer IP addresses with country flags and names
     echo -e "   ${CYAN}Connected Peers (all $connections):${NC}"
     peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getpeerinfo 2>/dev/null | jq -r '.[].addr')
     
     if [ ! -z "$peer_ips" ]; then
         echo "$peer_ips" | while read ip; do
             if [ ! -z "$ip" ]; then
-                # Extract just IP without port for geolocation hint
+                # Extract just IP without port for geolocation
                 clean_ip=$(echo "$ip" | cut -d':' -f1 | sed 's/\[//g' | sed 's/\]//g')
-                echo -e "     ${WHITE}$ip${NC} ${CYAN}($clean_ip)${NC}"
+                
+                # Get country info for this IP
+                country_code=$(get_country_info "$clean_ip")
+                if [[ ! -z "$country_code" ]]; then
+                    country_flag=$(get_country_flag "$country_code")
+                    country_name=$(get_country_name "$country_code")
+                    echo -e "     ${country_flag} ${WHITE}$ip${NC} ${CYAN}($country_name)${NC}"
+                else
+                    echo -e "     🏳️ ${WHITE}$ip${NC} ${CYAN}(Unknown)${NC}"
+                fi
             fi
         done
         
