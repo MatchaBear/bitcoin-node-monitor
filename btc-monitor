@@ -574,14 +574,20 @@ format_delta30() {
         delta="+$delta"
     fi
 
+    clean_delta=$(echo "$delta" | sed 's/^[-+]//')
+    abs_pct=$(echo "$pct" | sed 's/^[-+]//')
+    formatted_delta=$(printf "%'.2f" "$clean_delta")
+    formatted_pct=$(printf "%.2f" "$pct")
+    formatted_abs_pct=$(printf "%.2f" "$abs_pct")
+
     if (( $(echo "$pct > 0" | bc -l) )); then
-        echo -e "Δ~30s: ${GREEN}▲ +$(printf '%.2f' "$pct")% (${symbol}$(printf '%.2f' "$delta")) ${NC}"
+        echo -e "Δ~30s: ${GREEN}▲ +${formatted_pct}% (${symbol}${formatted_delta}) ${NC}"
     elif (( $(echo "$pct < 0" | bc -l) )); then
-        echo -e "Δ~30s: ${RED}▼ −$(printf '%.2f' "${pct#-}")% (${symbol}$(printf '%.2f' "${delta#-}")) ${NC}"
+        echo -e "Δ~30s: ${RED}▼ −${formatted_abs_pct}% (${symbol}${formatted_delta}) ${NC}"
     else
-        echo -e "Δ~30s: ${WHITE}$(printf '%.2f' "$pct")% (${symbol}$(printf '%.2f' "$delta")) ${NC}"
+        echo -e "Δ~30s: ${WHITE}${formatted_pct}% (${symbol}${formatted_delta}) ${NC}"
     fi
-}
+    }
 
     # Display all currencies with consistent formatting and provider info
     prev_usd_price=$(read_previous_price "USD")
