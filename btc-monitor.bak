@@ -160,9 +160,18 @@ get_country_name() {
     esac
 }
 
-# Quick Bitcoin Status Dashboard (One-shot version)
-echo -e "${BOLD}${CYAN}============================================${NC}"
-echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Status Dashboard           ${NC}"
+# Enhanced Bitcoin Node & Market Monitor with continuous loop
+
+clear
+echo -e "${BOLD}${GREEN}Starting Bitcoin Node Monitor...${NC}"
+sleep 1
+
+# Main monitoring loop
+while true; do
+    clear
+    
+    echo -e "${BOLD}${CYAN}============================================${NC}"
+    echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Node & Market Monitor     ${NC}"
 echo -e "${BOLD}${CYAN}============================================${NC}"
 echo -e "${WHITE}📅 $(date '+%Y-%m-%d %H:%M:%S')${NC}"
 echo -e "${CYAN}============================================${NC}"
@@ -331,7 +340,6 @@ fetch_bulletproof_price() {
         local change=$(echo "$result" | jq -r ".RAW.BTC.$currency_upper.CHANGEPCT24HOUR // 0")
         if [[ "$price" != "0" ]]; then
             # Set provider variable globally
-            eval "${currency_upper}_PROVIDER=CryptoCompare"
             echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":$change,\"provider\":\"CryptoCompare\"}}"
             return 0
         fi
@@ -345,7 +353,6 @@ fetch_bulletproof_price() {
             local price=$(echo "$result" | jq -r '.lastPrice // 0')
             local change=$(echo "$result" | jq -r '.priceChangePercent // 0')
             if [[ "$price" != "0" ]]; then
-                eval "USD_PROVIDER=Binance_24hr"
                 echo "{\"bitcoin\":{\"usd\":$price,\"usd_24h_change\":$change,\"provider\":\"Binance 24hr\"}}"
                 return 0
             fi
@@ -358,7 +365,6 @@ fetch_bulletproof_price() {
     if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"$currency_upper"* ]]; then
         local price=$(echo "$result" | jq -r ".$currency_upper // 0")
         if [[ "$price" != "0" ]]; then
-            eval "${currency_upper}_PROVIDER=CryptoCompare_Basic"
             echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":0,\"provider\":\"CryptoCompare Basic\"}}"
             return 0
         fi
@@ -368,7 +374,6 @@ fetch_bulletproof_price() {
     local coingecko_url="https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${currency_lower}&include_24h_change=true"
     result=$(curl -s --connect-timeout 5 --max-time 10 "$coingecko_url" 2>/dev/null)
     if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"bitcoin"* ]] && [[ "$result" != *"error_code"* ]]; then
-        eval "${currency_upper}_PROVIDER=CoinGecko"
         # Add provider info to the result
         result_with_provider=$(echo "$result" | jq '.bitcoin.provider = "CoinGecko"')
         echo "$result_with_provider"
@@ -376,7 +381,6 @@ fetch_bulletproof_price() {
     fi
     
     # Provider 5: Fallback with recent approximate values (updated regularly)
-    eval "${currency_upper}_PROVIDER=Fallback_Cache"
     case "$currency_lower" in
         "usd") echo '{"bitcoin":{"usd":105000,"usd_24h_change":0,"provider":"Fallback Cache"}}' ;;
         "eur") echo '{"bitcoin":{"eur":92500,"eur_24h_change":0,"provider":"Fallback Cache"}}' ;;
@@ -476,58 +480,62 @@ if [[ "$api_success" == "true" ]]; then
     
     # Function to format change for any currency with both percentage and raw values
     format_change() {
-    local change_pct="$1"
-    local change_raw="$2"
-    local currency_symbol="$3"
-    local change_abs
-    local change_color
-    local change_symbol
-    local change_text
-    local raw_abs
-    local raw_sign
-    local raw_formatted
-    local pct_formatted
-
-    # Handle null or empty values
-    if [[ "$change_pct" == "null" || "$change_pct" == "" ]]; then
-        change_pct="0"
-    fi
-    if [[ "$change_raw" == "null" || "$change_raw" == "" ]]; then
-        change_raw="0"
-    fi
-
-    # Calculate absolute value for % and raw
-    change_abs=$(echo "$change_pct" | sed 's/-//' | bc 2>/dev/null || echo "0")
-    raw_abs=$(echo "$change_raw" | sed 's/-//' | bc 2>/dev/null || echo "0")
-
-    # Determine color and symbol for %
-    if (( $(echo "$change_pct > 0" | bc -l 2>/dev/null || echo 0) )); then
-        change_color=$GREEN
-        change_symbol="▲"
-    elif (( $(echo "$change_pct < 0" | bc -l 2>/dev/null || echo 0) )); then
-        change_color=$RED
-        change_symbol="▼"
-    else
-        change_color=$YELLOW
-        change_symbol="═"
-    fi
-
-    # Format percentage
-    if (( $(echo "$change_abs > 0.01" | bc 2>/dev/null || echo 0) )); then
-        pct_formatted=$(printf "%.2f" "$change_pct" 2>/dev/null || echo "0.00")
-    else
-        pct_formatted=$(printf "%.3f" "$change_pct" 2>/dev/null || echo "0.000")
-    fi
-
-    # Format raw value with proper thousand separator
-    if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "IDR" ]]; then
-        raw_formatted=$(printf "%'.0f" "$raw_abs" 2>/dev/null || echo "0")
-    else
-        raw_formatted=$(printf "%'.2f" "$raw_abs" 2>/dev/null || echo "0.00")
-    fi
-
-    echo "${change_color}$change_symbol $pct_formatted% ($currency_symbol$raw_formatted)${NC}"
-}
+        local change_pct="$1"
+        local change_raw="$2"
+        local currency_symbol="$3"
+        local change_abs
+        local change_color
+        local change_symbol
+        local change_text
+        
+        # Handle null or empty values
+        if [[ "$change_pct" == "null" || "$change_pct" == "" ]]; then
+            change_pct="0"
+        fi
+        if [[ "$change_raw" == "null" || "$change_raw" == "" ]]; then
+            change_raw="0"
+        fi
+        
+        # Calculate absolute value
+        change_abs=$(echo "$change_pct" | sed 's/-//' | bc 2>/dev/null || echo "0")
+        
+        # Determine color and symbol
+        if (( $(echo "$change_pct > 0" | bc -l 2>/dev/null || echo 0) )); then
+            change_color=$GREEN
+            change_symbol="▲"
+        elif (( $(echo "$change_pct < 0" | bc -l 2>/dev/null || echo 0) )); then
+            change_color=$RED
+            change_symbol="▼"
+        else
+            change_color=$YELLOW
+            change_symbol="═"
+        fi
+        
+        # Format the percentage change
+        if (( $(echo "$change_abs > 0.01" | bc 2>/dev/null || echo 0) )); then
+            pct_formatted=$(printf "%.2f" "$change_pct" 2>/dev/null || echo "0.00")
+        else
+            pct_formatted=$(printf "%.3f" "$change_pct" 2>/dev/null || echo "0.000")
+        fi
+        
+        # Format raw change based on currency with thousands separators
+        if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "Rp." ]]; then
+            raw_formatted=$(printf "%'.0f" "$change_raw" 2>/dev/null || echo "0")
+        else
+            raw_formatted=$(printf "%'.2f" "$change_raw" 2>/dev/null || echo "0.00")
+        fi
+        
+        # Create plus/minus sign for raw value
+        if (( $(echo "$change_raw > 0" | bc -l 2>/dev/null || echo 0) )); then
+            raw_sign="+"
+        elif (( $(echo "$change_raw < 0" | bc -l 2>/dev/null || echo 0) )); then
+            raw_sign=""
+        else
+            raw_sign=""
+        fi
+        
+        echo "${change_color}$change_symbol $pct_formatted% ($raw_sign$currency_symbol$raw_formatted)${NC}"
+    }
     
     # Display all currencies with consistent formatting and provider info
     echo -e "USD: ${WHITE}\$$(printf "%'15.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${CYAN}($USD_PROVIDER)${NC}"
@@ -614,7 +622,10 @@ else
 fi
 echo
 
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${WHITE}💡 Use ${BOLD}btcm${NC}${WHITE} for continuous monitoring${NC}"
-echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${WHITE}🔄 Auto-refresh in 30s | Press ${BOLD}Ctrl+C${NC}${WHITE} to exit${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    
+    sleep 30
+done
 
