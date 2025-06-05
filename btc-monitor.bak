@@ -470,6 +470,20 @@ IFS='|' read jpy_price jpy_change_pct jpy_change_raw JPY_PROVIDER <<< "$(process
 IFS='|' read krw_price krw_change_pct krw_change_raw KRW_PROVIDER <<< "$(process_currency_data "$krw_data" "KRW")"
 IFS='|' read idr_price idr_change_pct idr_change_raw IDR_PROVIDER <<< "$(process_currency_data "$idr_data" "IDR")"
 
+# Write current prices to file for future reference
+write_current_prices() {
+    cat > btc_last_prices.txt <<EOF
+USD:$usd_price
+EUR:$eur_price
+GBP:$gbp_price
+SGD:$sgd_price
+CHF:$chf_price
+JPY:$jpy_price
+KRW:$krw_price
+IDR:$idr_price
+EOF
+}
+
 # Check if we have valid data
 api_success=false
 if [[ "$usd_price" != "0" || "$eur_price" != "0" || "$gbp_price" != "0" ]]; then
@@ -480,77 +494,142 @@ if [[ "$api_success" == "true" ]]; then
     
     # Function to format change for any currency with both percentage and raw values
     format_change() {
-        local change_pct="$1"
-        local change_raw="$2"
-        local currency_symbol="$3"
-        local change_abs
-        local change_color
-        local change_symbol
-        local change_text
-        
-        # Handle null or empty values
-        if [[ "$change_pct" == "null" || "$change_pct" == "" ]]; then
-            change_pct="0"
-        fi
-        if [[ "$change_raw" == "null" || "$change_raw" == "" ]]; then
-            change_raw="0"
-        fi
-        
-        # Calculate absolute value
-        change_abs=$(echo "$change_pct" | sed 's/-//' | bc 2>/dev/null || echo "0")
-        
-        # Determine color and symbol
-        if (( $(echo "$change_pct > 0" | bc -l 2>/dev/null || echo 0) )); then
-            change_color=$GREEN
-            change_symbol="▲"
-        elif (( $(echo "$change_pct < 0" | bc -l 2>/dev/null || echo 0) )); then
-            change_color=$RED
-            change_symbol="▼"
-        else
-            change_color=$YELLOW
-            change_symbol="═"
-        fi
-        
-        # Format the percentage change
-        if (( $(echo "$change_abs > 0.01" | bc 2>/dev/null || echo 0) )); then
-            pct_formatted=$(printf "%.2f" "$change_pct" 2>/dev/null || echo "0.00")
-        else
-            pct_formatted=$(printf "%.3f" "$change_pct" 2>/dev/null || echo "0.000")
-        fi
-        
-        # Format raw change based on currency with thousands separators
-        if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "Rp." ]]; then
-            raw_formatted=$(printf "%'.0f" "$change_raw" 2>/dev/null || echo "0")
-        else
-            raw_formatted=$(printf "%'.2f" "$change_raw" 2>/dev/null || echo "0.00")
-        fi
-        
-        # Create plus/minus sign for raw value
-        if (( $(echo "$change_raw > 0" | bc -l 2>/dev/null || echo 0) )); then
-            raw_sign="+"
-        elif (( $(echo "$change_raw < 0" | bc -l 2>/dev/null || echo 0) )); then
-            raw_sign=""
-        else
-            raw_sign=""
-        fi
-        
-        echo "${change_color}$change_symbol $pct_formatted% ($raw_sign$currency_symbol$raw_formatted)${NC}"
-    }
+    local change_pct="$1"
+    local change_raw="$2"
+    local currency_symbol="$3"
+    local change_abs
+    local change_color
+    local change_symbol
+    local change_text
+    local raw_abs
+    local raw_sign
+    local raw_formatted
+    local pct_formatted
+
+    # Handle null or empty values
+    if [[ "$change_pct" == "null" || "$change_pct" == "" ]]; then
+        change_pct="0"
+    fi
+    if [[ "$change_raw" == "null" || "$change_raw" == "" ]]; then
+        change_raw="0"
+    fi
+
+    # Calculate absolute value for % and raw
+    change_abs=$(echo "$change_pct" | sed 's/-//' | bc 2>/dev/null || echo "0")
+    raw_abs=$(echo "$change_raw" | sed 's/-//' | bc 2>/dev/null || echo "0")
+
+    # Determine color and symbol for %
+    if (( $(echo "$change_pct > 0" | bc -l 2>/dev/null || echo 0) )); then
+        change_color=$GREEN
+        change_symbol="▲"
+    elif (( $(echo "$change_pct < 0" | bc -l 2>/dev/null || echo 0) )); then
+        change_color=$RED
+        change_symbol="▼"
+    else
+        change_color=$YELLOW
+        change_symbol="═"
+    fi
+
+    # Format percentage
+    if (( $(echo "$change_abs > 0.01" | bc 2>/dev/null || echo 0) )); then
+        pct_formatted=$(printf "%.2f" "$change_pct" 2>/dev/null || echo "0.00")
+    else
+        pct_formatted=$(printf "%.3f" "$change_pct" 2>/dev/null || echo "0.000")
+    fi
+
+    # Format raw value with proper thousand separator
+    if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "IDR" ]]; then
+        raw_formatted=$(printf "%'.0f" "$raw_abs" 2>/dev/null || echo "0")
+    else
+        raw_formatted=$(printf "%'.2f" "$raw_abs" 2>/dev/null || echo "0.00")
+    fi
+
+    echo "${change_color}$change_symbol $pct_formatted% ($currency_symbol$raw_formatted)${NC}"
+}
     
+    # Read previous prices from file defined earlier
+    read_previous_price() {
+    local currency="$1"
+    if [[ -f "btc_last_prices.txt" ]]; then
+        grep "^$currency:" btc_last_prices.txt | cut -d':' -f2
+    else
+        echo ""
+    fi
+    }
+
+# Function to format the delta for the last 30 seconds
+format_delta30() {
+    local current="$1"
+    local previous="$2"
+    local symbol="$3"
+
+    # Hitung delta dan persen
+    local delta
+    local pct
+    delta=$(echo "$current - $previous" | bc -l)
+    pct=$(echo "scale=6; ($delta / $previous) * 100" | bc -l)
+
+    # Tambahkan tanda + jika positif
+    if [[ "$delta" != -* && "$delta" != +* ]]; then
+        delta="+$delta"
+    fi
+
+    clean_delta=$(echo "$delta" | sed 's/^[-+]//')
+    abs_pct=$(echo "$pct" | sed 's/^[-+]//')
+    formatted_delta=$(printf "%'.2f" "$clean_delta")
+    formatted_pct=$(printf "%.2f" "$pct")
+    formatted_abs_pct=$(printf "%.2f" "$abs_pct")
+
+    if (( $(echo "$pct > 0" | bc -l) )); then
+        echo -e "Δ~30s: ${GREEN}▲ +${formatted_pct}% (${symbol}${formatted_delta}) ${NC}"
+    elif (( $(echo "$pct < 0" | bc -l) )); then
+        echo -e "Δ~30s: ${RED}▼ −${formatted_abs_pct}% (${symbol}${formatted_delta}) ${NC}"
+    else
+        echo -e "Δ~30s: ${WHITE}${formatted_pct}% (${symbol}${formatted_delta}) ${NC}"
+    fi
+    }
+
     # Display all currencies with consistent formatting and provider info
-    echo -e "USD: ${WHITE}\$$(printf "%'15.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${CYAN}($USD_PROVIDER)${NC}"
-    echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${CYAN}($EUR_PROVIDER)${NC}"
-    echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${CYAN}($GBP_PROVIDER)${NC}"
-    echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${CYAN}($SGD_PROVIDER)${NC}"
-    echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${CYAN}($CHF_PROVIDER)${NC}"
-    echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${CYAN}($JPY_PROVIDER)${NC}"
-    echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${CYAN}($KRW_PROVIDER)${NC}"
-    echo -e "IDR: ${WHITE}IDR$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.") ${CYAN}($IDR_PROVIDER)${NC}"
-else
+    prev_usd_price=$(read_previous_price "USD")
+    delta_usd=$(format_delta30 "$usd_price" "$prev_usd_price" "\$")
+    echo -e "USD: ${WHITE}\$$(printf "%'15.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${CYAN}($USD_PROVIDER)${NC} $delta_usd"
+
+    prev_eur_price=$(read_previous_price "EUR")
+    delta_eur=$(format_delta30 "$eur_price" "$prev_eur_price" "€")
+    echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${CYAN}($EUR_PROVIDER)${NC} $delta_eur"
+
+    prev_gbp_price=$(read_previous_price "GBP")
+    delta_gbp=$(format_delta30 "$gbp_price" "$prev_gbp_price" "£")
+    echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${CYAN}($GBP_PROVIDER)${NC} $delta_gbp"
+
+    prev_sgd_price=$(read_previous_price "SGD")
+    delta_sgd=$(format_delta30 "$sgd_price" "$prev_sgd_price" "S\$") 
+    echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${CYAN}($SGD_PROVIDER)${NC} $delta_sgd"
+
+    prev_chf_price=$(read_previous_price "CHF")
+    delta_chf=$(format_delta30 "$chf_price" "$prev_chf_price" "CHF")
+    echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${CYAN}($CHF_PROVIDER)${NC} $delta_chf"
+
+    prev_jpy_price=$(read_previous_price "JPY")
+    delta_jpy=$(format_delta30 "$jpy_price" "$prev_jpy_price" "¥")
+    echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${CYAN}($JPY_PROVIDER)${NC} $delta_jpy"
+
+    prev_krw_price=$(read_previous_price "KRW")
+    delta_krw=$(format_delta30 "$krw_price" "$prev_krw_price" "₩")
+    echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${CYAN}($KRW_PROVIDER)${NC} $delta_krw"
+
+    prev_idr_price=$(read_previous_price "IDR")
+    delta_idr=$(format_delta30 "$idr_price" "$prev_idr_price" "IDR")
+    echo -e "IDR: ${WHITE}IDR$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "IDR") ${CYAN}($IDR_PROVIDER)${NC} $delta_idr"
+
+   else
     echo -e "${RED}❌ Price APIs currently unavailable${NC}"
     echo -e "${YELLOW}💡 This may be due to rate limiting or network issues${NC}"
 fi
 echo
+
+# Write current prices to file so we can track changes every 30 seconds
+write_current_prices
 
 # ATH Section (separate)
 echo -e "${BOLD}${PURPLE}📊 ALL-TIME HIGH (ATH)${NC}"
