@@ -563,31 +563,30 @@ format_delta30() {
     local previous="$2"
     local symbol="$3"
 
-    # Hitung delta dan persen
     local delta
-    local pct
     delta=$(echo "$current - $previous" | bc -l)
-    pct=$(echo "scale=6; ($delta / $previous) * 100" | bc -l)
+    local delta_sign=$(echo "$delta" | grep -o '^-')
 
-    # Tambahkan tanda + jika positif
-    if [[ "$delta" != -* && "$delta" != +* ]]; then
-        delta="+$delta"
-    fi
-
+    # Buat nilai absolute untuk tampilan
     clean_delta=$(echo "$delta" | sed 's/^[-+]//')
-    abs_pct=$(echo "$pct" | sed 's/^[-+]//')
     formatted_delta=$(printf "%'.2f" "$clean_delta")
+
+    # Hitung persentase tetap untuk info
+    local pct
+    pct=$(echo "scale=6; ($delta / $previous) * 100" | bc -l)
+    abs_pct=$(echo "$pct" | sed 's/^[-+]//')
     formatted_pct=$(printf "%.2f" "$pct")
     formatted_abs_pct=$(printf "%.2f" "$abs_pct")
 
-    if (( $(echo "$pct > 0" | bc -l) )); then
+    # Warna berdasarkan delta absolut (naik/turun harga)
+    if [[ -z "$delta_sign" ]]; then
         echo -e "Δ~30s: ${GREEN}▲ +${formatted_pct}% (${symbol}${formatted_delta}) ${NC}"
-    elif (( $(echo "$pct < 0" | bc -l) )); then
+    elif [[ "$delta_sign" == "-" ]]; then
         echo -e "Δ~30s: ${RED}▼ −${formatted_abs_pct}% (${symbol}${formatted_delta}) ${NC}"
     else
         echo -e "Δ~30s: ${WHITE}${formatted_pct}% (${symbol}${formatted_delta}) ${NC}"
     fi
-    }
+}
 
     # Display all currencies with consistent formatting and provider info
     prev_usd_price=$(read_previous_price "USD")

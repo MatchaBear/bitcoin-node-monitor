@@ -391,32 +391,100 @@ fetch_bulletproof_price() {
     return 0
 }
 
-# ATH data with multiple providers  
+# ATH data with multiple providers - Enhanced with real-time data
 fetch_bulletproof_ath() {
-    # Try CoinGecko first (no debug message to reduce output)
-    local result=$(curl -s --connect-timeout 5 --max-time 10 "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false" 2>/dev/null)
-    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"market_data"* ]] && [[ "$result" != *"error_code"* ]]; then
-        echo "$result"
-        return 0
+    local ath_data='{"market_data":{"ath":{}}}'
+    local provider_used="None"
+    
+    # Step 1: Try CoinGecko for comprehensive ATH data
+    local coingecko_result=$(curl -s --connect-timeout 5 --max-time 10 "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false" 2>/dev/null)
+    if [[ ! -z "$coingecko_result" ]] && echo "$coingecko_result" | jq . > /dev/null 2>&1 && [[ "$coingecko_result" == *"market_data"* ]] && [[ "$coingecko_result" != *"error_code"* ]]; then
+        ath_data="$coingecko_result"
+        provider_used="CoinGecko"
     fi
     
-    # Fallback with known ATH values (silent fallback)
-    cat << 'EOF'
+    # Step 2: Get current 24h highs from multiple exchanges for comparison
+    local binance_24h_high=0
+    local binance_result=$(curl -s --connect-timeout 5 --max-time 10 "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT" 2>/dev/null)
+    if [[ ! -z "$binance_result" ]] && echo "$binance_result" | jq . > /dev/null 2>&1 && [[ "$binance_result" == *"highPrice"* ]]; then
+        binance_24h_high=$(echo "$binance_result" | jq -r '.highPrice // 0')
+    fi
+    
+    # Step 3: Get CryptoCompare 24h high as secondary source
+    local cryptocompare_24h_high=0
+    local cryptocompare_result=$(curl -s --connect-timeout 5 --max-time 10 "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=USD" 2>/dev/null)
+    if [[ ! -z "$cryptocompare_result" ]] && echo "$cryptocompare_result" | jq . > /dev/null 2>&1 && [[ "$cryptocompare_result" == *"HIGH24HOUR"* ]]; then
+        cryptocompare_24h_high=$(echo "$cryptocompare_result" | jq -r '.RAW.BTC.USD.HIGH24HOUR // 0')
+    fi
+    
+    # Step 4: Compare with recorded ATH and update if higher
+    if [[ "$ath_data" != '{"market_data":{"ath":{}}}' ]]; then
+        local recorded_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd // 0')
+        
+        # Find the highest value among all sources
+        local highest_value=$recorded_ath
+        local highest_source="$provider_used"
+        
+        if (( $(echo "$binance_24h_high > $highest_value" | bc -l 2>/dev/null || echo 0) )); then
+            highest_value=$binance_24h_high
+            highest_source="Binance_24h"
+        fi
+        
+        if (( $(echo "$cryptocompare_24h_high > $highest_value" | bc -l 2>/dev/null || echo 0) )); then
+            highest_value=$cryptocompare_24h_high
+            highest_source="CryptoCompare_24h"
+        fi
+        
+        # If we found a higher value, update the ATH data
+        if (( $(echo "$highest_value > $recorded_ath" | bc -l 2>/dev/null || echo 0) )); then
+            # Update USD ATH with the new high
+            ath_data=$(echo "$ath_data" | jq ".market_data.ath.usd = $highest_value | .market_data.ath_source = \"$highest_source\" | .market_data.ath_updated = true")
+            
+            # Estimate other currencies based on current rates (rough approximation)
+            local usd_to_eur_rate=0.85
+            local usd_to_gbp_rate=0.75
+            local usd_to_sgd_rate=1.35
+            local usd_to_chf_rate=0.88
+            local usd_to_jpy_rate=150
+            local usd_to_krw_rate=1300
+            local usd_to_idr_rate=15800
+            
+            ath_data=$(echo "$ath_data" | jq ".market_data.ath.eur = ($highest_value * $usd_to_eur_rate | floor) | .market_data.ath.gbp = ($highest_value * $usd_to_gbp_rate | floor) | .market_data.ath.sgd = ($highest_value * $usd_to_sgd_rate | floor) | .market_data.ath.chf = ($highest_value * $usd_to_chf_rate | floor) | .market_data.ath.jpy = ($highest_value * $usd_to_jpy_rate | floor) | .market_data.ath.krw = ($highest_value * $usd_to_krw_rate | floor) | .market_data.ath.idr = ($highest_value * $usd_to_idr_rate | floor)")
+        fi
+    else
+        # If CoinGecko failed, use fallback with updated values
+        local fallback_usd_ath=111814
+        if (( $(echo "$binance_24h_high > $fallback_usd_ath" | bc -l 2>/dev/null || echo 0) )); then
+            fallback_usd_ath=$binance_24h_high
+            provider_used="Binance_24h_Fallback"
+        elif (( $(echo "$cryptocompare_24h_high > $fallback_usd_ath" | bc -l 2>/dev/null || echo 0) )); then
+            fallback_usd_ath=$cryptocompare_24h_high
+            provider_used="CryptoCompare_24h_Fallback"
+        else
+            provider_used="Static_Fallback"
+        fi
+        
+        ath_data=$(cat <<EOF
 {
   "market_data": {
     "ath": {
-      "usd": 111814,
-      "eur": 105495,
-      "gbp": 89249,
-      "sgd": 148442,
-      "chf": 99287,
-      "jpy": 16991443,
-      "krw": 157802010,
-      "idr": 1829440608
-    }
+      "usd": $fallback_usd_ath,
+      "eur": $(echo "$fallback_usd_ath * 0.85" | bc | cut -d. -f1),
+      "gbp": $(echo "$fallback_usd_ath * 0.75" | bc | cut -d. -f1),
+      "sgd": $(echo "$fallback_usd_ath * 1.35" | bc | cut -d. -f1),
+      "chf": $(echo "$fallback_usd_ath * 0.88" | bc | cut -d. -f1),
+      "jpy": $(echo "$fallback_usd_ath * 150" | bc | cut -d. -f1),
+      "krw": $(echo "$fallback_usd_ath * 1300" | bc | cut -d. -f1),
+      "idr": $(echo "$fallback_usd_ath * 15800" | bc | cut -d. -f1)
+    },
+    "ath_source": "$provider_used"
   }
 }
 EOF
+        )
+    fi
+    
+    echo "$ath_data"
     return 0
 }
 
@@ -543,14 +611,13 @@ else
     echo -e "${YELLOW}💡 This may be due to rate limiting or network issues${NC}"
 fi
 echo
-
 # ATH Section (separate)
 echo -e "${BOLD}${PURPLE}📊 ALL-TIME HIGH (ATH)${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 # Get ATH data with bulletproof system
 ath_data=$(fetch_bulletproof_ath)
-if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . >/dev/null 2>&1; then
+if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . > /dev/null 2>&1; then
     usd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd // 73817')
     eur_ath=$(echo "$ath_data" | jq -r '.market_data.ath.eur // 68000')
     gbp_ath=$(echo "$ath_data" | jq -r '.market_data.ath.gbp // 58000')
@@ -560,7 +627,17 @@ if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . >/dev/null 2>&1; then
     krw_ath=$(echo "$ath_data" | jq -r '.market_data.ath.krw // 150000000')
     idr_ath=$(echo "$ath_data" | jq -r '.market_data.ath.idr // 1143000000')
     
-    echo -e "USD: ${YELLOW}\$$(printf "%'15.2f" "$usd_ath")${NC}"
+    # Check if ATH was updated and get source
+    ath_updated=$(echo "$ath_data" | jq -r '.market_data.ath_updated // false')
+    ath_source=$(echo "$ath_data" | jq -r '.market_data.ath_source // "CoinGecko"')
+    
+    # Display ATH values with update indicator
+    ath_indicator=""
+    if [[ "$ath_updated" == "true" ]]; then
+        ath_indicator="${GREEN}🔥 NEW ATH! ${NC}"
+    fi
+    
+    echo -e "USD: ${YELLOW}\$$(printf "%'15.2f" "$usd_ath")${NC} $ath_indicator"
     echo -e "EUR: ${YELLOW}€$(printf "%'15.2f" "$eur_ath")${NC}"
     echo -e "GBP: ${YELLOW}£$(printf "%'15.2f" "$gbp_ath")${NC}"
     echo -e "SGD: ${YELLOW}S\$$(printf "%'14.2f" "$sgd_ath")${NC}"
@@ -568,6 +645,7 @@ if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . >/dev/null 2>&1; then
     echo -e "JPY: ${YELLOW}¥$(printf "%'15.0f" "$jpy_ath")${NC}"
     echo -e "KRW: ${YELLOW}₩$(printf "%'15.0f" "$krw_ath")${NC}"
     echo -e "IDR: ${YELLOW}IDR$(printf "%'13.0f" "$idr_ath")${NC}"
+    echo -e "${CYAN}📡 ATH Source: $ath_source${NC}"
 else
     echo -e "${RED}❌ ATH data unavailable${NC}"
 fi
