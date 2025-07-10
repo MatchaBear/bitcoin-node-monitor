@@ -397,50 +397,50 @@ fetch_bulletproof_price() {
 
 # ATH data with multiple providers - Enhanced with real-time data
 fetch_bulletproof_ath() {
-    local ath_data="{\"market_data\":{\"ath\":{}}}"
+    local ath_data='{"market_data":{"ath":{}}}'
     local provider_used="None"
     
     # Step 1: Try CoinGecko for comprehensive ATH data
-    local coingecko_result=$(curl -s --connect-timeout 5 --max-time 10 "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false\u0026tickers=false\u0026market_data=true\u0026community_data=false\u0026developer_data=false\u0026sparkline=false" 2\u003e/dev/null)
-    if [[ ! -z "$coingecko_result" ]] \u0026\u0026 echo "$coingecko_result" | jq . \u003e /dev/null 2\u003e\u00261 \u0026\u0026 [[ "$coingecko_result" == *"market_data"* ]] \u0026\u0026 [[ "$coingecko_result" != *"error_code"* ]]; then
+    local coingecko_result=$(curl -s --connect-timeout 5 --max-time 10 "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false" 2>/dev/null)
+    if [[ ! -z "$coingecko_result" ]] && echo "$coingecko_result" | jq . > /dev/null 2>&1 && [[ "$coingecko_result" == *"market_data"* ]] && [[ "$coingecko_result" != *"error_code"* ]]; then
         ath_data="$coingecko_result"
         provider_used="CoinGecko"
     fi
     
     # Step 2: Get current 24h highs from multiple exchanges for comparison
     local binance_24h_high=0
-    local binance_result=$(curl -s --connect-timeout 5 --max-time 10 "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT" 2\u003e/dev/null)
-    if [[ ! -z "$binance_result" ]] \u0026\u0026 echo "$binance_result" | jq . \u003e /dev/null 2\u003e\u00261 \u0026\u0026 [[ "$binance_result" == *"highPrice"* ]]; then
+    local binance_result=$(curl -s --connect-timeout 5 --max-time 10 "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT" 2>/dev/null)
+    if [[ ! -z "$binance_result" ]] && echo "$binance_result" | jq . > /dev/null 2>&1 && [[ "$binance_result" == *"highPrice"* ]]; then
         binance_24h_high=$(echo "$binance_result" | jq -r '.highPrice // 0')
     fi
     
     # Step 3: Get CryptoCompare 24h high as secondary source
     local cryptocompare_24h_high=0
-    local cryptocompare_result=$(curl -s --connect-timeout 5 --max-time 10 "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC\u0026tsyms=USD" 2\u003e/dev/null)
-    if [[ ! -z "$cryptocompare_result" ]] \u0026\u0026 echo "$cryptocompare_result" | jq . \u003e /dev/null 2\u003e\u00261 \u0026\u0026 [[ "$cryptocompare_result" == *"HIGH24HOUR"* ]]; then
+    local cryptocompare_result=$(curl -s --connect-timeout 5 --max-time 10 "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=USD" 2>/dev/null)
+    if [[ ! -z "$cryptocompare_result" ]] && echo "$cryptocompare_result" | jq . > /dev/null 2>&1 && [[ "$cryptocompare_result" == *"HIGH24HOUR"* ]]; then
         cryptocompare_24h_high=$(echo "$cryptocompare_result" | jq -r '.RAW.BTC.USD.HIGH24HOUR // 0')
     fi
     
     # Step 4: Compare with recorded ATH and update if higher
-    if [[ "$ath_data" != "{\"market_data\":{\"ath\":{}}}" ]]; then
+    if [[ "$ath_data" != '{"market_data":{"ath":{}}}' ]]; then
         local recorded_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd // 0')
         
         # Find the highest value among all sources
         local highest_value=$recorded_ath
         local highest_source="$provider_used"
         
-        if (( $(echo "$binance_24h_high \u003e $highest_value" | bc -l 2\u003e/dev/null || echo 0) )); then
+        if (( $(echo "$binance_24h_high > $highest_value" | bc -l 2>/dev/null || echo 0) )); then
             highest_value=$binance_24h_high
             highest_source="Binance_24h"
         fi
         
-        if (( $(echo "$cryptocompare_24h_high \u003e $highest_value" | bc -l 2\u003e/dev/null || echo 0) )); then
+        if (( $(echo "$cryptocompare_24h_high > $highest_value" | bc -l 2>/dev/null || echo 0) )); then
             highest_value=$cryptocompare_24h_high
             highest_source="CryptoCompare_24h"
         fi
         
         # If we found a higher value, update the ATH data
-        if (( $(echo "$highest_value \u003e $recorded_ath" | bc -l 2\u003e/dev/null || echo 0) )); then
+        if (( $(echo "$highest_value > $recorded_ath" | bc -l 2>/dev/null || echo 0) )); then
             # Update USD ATH with the new high
             ath_data=$(echo "$ath_data" | jq ".market_data.ath.usd = $highest_value | .market_data.ath_source = \"$highest_source\" | .market_data.ath_updated = true")
             
@@ -453,28 +453,22 @@ fetch_bulletproof_ath() {
             local usd_to_krw_rate=1300
             local usd_to_idr_rate=15800
             
-            ath_data=$(echo "$ath_data" | jq ".market_data.ath.eur = ($highest_value * $usd_to_eur_rate | floor) |\
-                .market_data.ath.gbp = ($highest_value * $usd_to_gbp_rate | floor) |\
-                .market_data.ath.sgd = ($highest_value * $usd_to_sgd_rate | floor) |\
-                .market_data.ath.chf = ($highest_value * $usd_to_chf_rate | floor) |\
-                .market_data.ath.jpy = ($highest_value * $usd_to_jpy_rate | floor) |\
-                .market_data.ath.krw = ($highest_value * $usd_to_krw_rate | floor) |\
-                .market_data.ath.idr = ($highest_value * $usd_to_idr_rate | floor)")
+            ath_data=$(echo "$ath_data" | jq ".market_data.ath.eur = ($highest_value * $usd_to_eur_rate | floor) | .market_data.ath.gbp = ($highest_value * $usd_to_gbp_rate | floor) | .market_data.ath.sgd = ($highest_value * $usd_to_sgd_rate | floor) | .market_data.ath.chf = ($highest_value * $usd_to_chf_rate | floor) | .market_data.ath.jpy = ($highest_value * $usd_to_jpy_rate | floor) | .market_data.ath.krw = ($highest_value * $usd_to_krw_rate | floor) | .market_data.ath.idr = ($highest_value * $usd_to_idr_rate | floor)")
         fi
     else
         # If CoinGecko failed, use fallback with updated values
         local fallback_usd_ath=111814
-        if (( $(echo "$binance_24h_high \u003e $fallback_usd_ath" | bc -l 2\u003e/dev/null || echo 0) )); then
+        if (( $(echo "$binance_24h_high > $fallback_usd_ath" | bc -l 2>/dev/null || echo 0) )); then
             fallback_usd_ath=$binance_24h_high
             provider_used="Binance_24h_Fallback"
-        elif (( $(echo "$cryptocompare_24h_high \u003e $fallback_usd_ath" | bc -l 2\u003e/dev/null || echo 0) )); then
+        elif (( $(echo "$cryptocompare_24h_high > $fallback_usd_ath" | bc -l 2>/dev/null || echo 0) )); then
             fallback_usd_ath=$cryptocompare_24h_high
             provider_used="CryptoCompare_24h_Fallback"
         else
             provider_used="Static_Fallback"
         fi
         
-        ath_data=$(cat \u003c\u003cEOF
+        ath_data=$(cat <<EOF
 {
   "market_data": {
     "ath": {
