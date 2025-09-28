@@ -162,6 +162,10 @@ get_country_name() {
 
 # Enhanced Bitcoin Node & Market Monitor with continuous loop
 
+# RPC Configuration - Use environment variables for security
+RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
+RPC_PASS=${BTC_RPC_PASS:-"vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN"}
+
 clear
 echo -e "${BOLD}${GREEN}Starting Bitcoin Node Monitor...${NC}"
 sleep 1
@@ -178,9 +182,9 @@ echo -e "${CYAN}============================================${NC}"
 echo
 
 # Get all data in one go for efficiency
-sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getblockchaininfo 2>/dev/null)
-network_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getnetworkinfo 2>/dev/null)
-mempool_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getmempoolinfo 2>/dev/null)
+sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockchaininfo 2>/dev/null)
+network_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getnetworkinfo 2>/dev/null)
+mempool_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getmempoolinfo 2>/dev/null)
 
 # Node Status Section
 echo -e "${BOLD}${GREEN}🔧 NODE STATUS${NC}"
@@ -221,9 +225,13 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
     # Get public IP and ISP info using ipinfo.io and ipapi.co
     get_ip_info() {
         local IPINFO_TOKEN="6902bfdd9ec8e3"
-        local ip_file="/Users/bermekbukair/bitcoin/last_ip.txt"
+        local bitcoin_dir="/Users/bermekbukair/bitcoin"
+        local ip_file="$bitcoin_dir/last_ip.txt"
         local skip_ip_lookup=false
         local source_used=""
+        
+        # Ensure directory exists
+        mkdir -p "$bitcoin_dir"
 
         public_ip=$(curl -s --connect-timeout 5 https://api.ipify.org)
 
@@ -275,7 +283,7 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
 
     # Show ALL peer IP addresses with country flags and names
     echo -e "   ${CYAN}Connected Peers (all $connections):${NC}"
-    peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getpeerinfo 2>/dev/null | jq -r '.[].addr')
+    peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getpeerinfo 2>/dev/null | jq -r '.[].addr')
     
     if [ ! -z "$peer_ips" ]; then
         echo "$peer_ips" | while read ip; do
@@ -382,14 +390,14 @@ fetch_bulletproof_price() {
     
     # Provider 5: Fallback with recent approximate values (updated regularly)
     case "$currency_lower" in
-        "usd") echo '{"bitcoin":{"usd":105000,"usd_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "eur") echo '{"bitcoin":{"eur":92500,"eur_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "gbp") echo '{"bitcoin":{"gbp":78000,"gbp_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "sgd") echo '{"bitcoin":{"sgd":135700,"sgd_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "chf") echo '{"bitcoin":{"chf":86200,"chf_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "jpy") echo '{"bitcoin":{"jpy":15130000,"jpy_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "krw") echo '{"bitcoin":{"krw":145250000,"krw_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "idr") echo '{"bitcoin":{"idr":1719000000,"idr_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "usd") echo '{"bitcoin":{"usd":108000,"usd_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "eur") echo '{"bitcoin":{"eur":98000,"eur_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "gbp") echo '{"bitcoin":{"gbp":84000,"gbp_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "sgd") echo '{"bitcoin":{"sgd":145000,"sgd_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "chf") echo '{"bitcoin":{"chf":95000,"chf_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "jpy") echo '{"bitcoin":{"jpy":16200000,"jpy_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "krw") echo '{"bitcoin":{"krw":148000000,"krw_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "idr") echo '{"bitcoin":{"idr":1720000000,"idr_24h_change":0,"provider":"Fallback Cache"}}' ;;
         *) echo '{"bitcoin":{"'$currency_lower'":0,"'${currency_lower}'_24h_change":0,"provider":"Fallback Cache"}}' ;;
     esac
     return 0
@@ -405,6 +413,35 @@ fetch_bulletproof_ath() {
     if [[ ! -z "$coingecko_result" ]] && echo "$coingecko_result" | jq . > /dev/null 2>&1 && [[ "$coingecko_result" == *"market_data"* ]] && [[ "$coingecko_result" != *"error_code"* ]]; then
         ath_data="$coingecko_result"
         provider_used="CoinGecko"
+        
+        # Extract ATH dates for main currencies
+        local usd_ath_date eur_ath_date sgd_ath_date idr_ath_date
+        usd_ath_date=$(echo "$coingecko_result" | jq -r '.market_data.ath_date.usd // ""')
+        eur_ath_date=$(echo "$coingecko_result" | jq -r '.market_data.ath_date.eur // ""')
+        sgd_ath_date=$(echo "$coingecko_result" | jq -r '.market_data.ath_date.sgd // ""')
+        idr_ath_date=$(echo "$coingecko_result" | jq -r '.market_data.ath_date.idr // ""')
+        
+        # Add formatted ATH dates to the data
+        if [[ ! -z "$usd_ath_date" && "$usd_ath_date" != "null" ]]; then
+            # Convert ISO datetime to readable format (cross-platform compatible)
+            local usd_formatted_date=$(date -d "${usd_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${usd_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || echo "${usd_ath_date%T*}")
+            ath_data=$(echo "$ath_data" | jq --arg date "$usd_formatted_date" '.market_data.ath_date_formatted.usd = $date')
+        fi
+        
+        if [[ ! -z "$eur_ath_date" && "$eur_ath_date" != "null" ]]; then
+            local eur_formatted_date=$(date -d "${eur_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${eur_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || echo "${eur_ath_date%T*}")
+            ath_data=$(echo "$ath_data" | jq --arg date "$eur_formatted_date" '.market_data.ath_date_formatted.eur = $date')
+        fi
+        
+        if [[ ! -z "$sgd_ath_date" && "$sgd_ath_date" != "null" ]]; then
+            local sgd_formatted_date=$(date -d "${sgd_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${sgd_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || echo "${sgd_ath_date%T*}")
+            ath_data=$(echo "$ath_data" | jq --arg date "$sgd_formatted_date" '.market_data.ath_date_formatted.sgd = $date')
+        fi
+        
+        if [[ ! -z "$idr_ath_date" && "$idr_ath_date" != "null" ]]; then
+            local idr_formatted_date=$(date -d "${idr_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${idr_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || echo "${idr_ath_date%T*}")
+            ath_data=$(echo "$ath_data" | jq --arg date "$idr_formatted_date" '.market_data.ath_date_formatted.idr = $date')
+        fi
     fi
     
     # Step 2: Get current 24h highs from multiple exchanges for comparison
@@ -445,19 +482,19 @@ fetch_bulletproof_ath() {
             ath_data=$(echo "$ath_data" | jq ".market_data.ath.usd = $highest_value | .market_data.ath_source = \"$highest_source\" | .market_data.ath_updated = true")
             
             # Estimate other currencies based on current rates (rough approximation)
-            local usd_to_eur_rate=0.85
-            local usd_to_gbp_rate=0.75
-            local usd_to_sgd_rate=1.35
+            local usd_to_eur_rate=0.91
+            local usd_to_gbp_rate=0.76
+            local usd_to_sgd_rate=1.34
             local usd_to_chf_rate=0.88
             local usd_to_jpy_rate=150
-            local usd_to_krw_rate=1300
-            local usd_to_idr_rate=15800
+            local usd_to_krw_rate=1370
+            local usd_to_idr_rate=15900
             
             ath_data=$(echo "$ath_data" | jq ".market_data.ath.eur = ($highest_value * $usd_to_eur_rate | floor) | .market_data.ath.gbp = ($highest_value * $usd_to_gbp_rate | floor) | .market_data.ath.sgd = ($highest_value * $usd_to_sgd_rate | floor) | .market_data.ath.chf = ($highest_value * $usd_to_chf_rate | floor) | .market_data.ath.jpy = ($highest_value * $usd_to_jpy_rate | floor) | .market_data.ath.krw = ($highest_value * $usd_to_krw_rate | floor) | .market_data.ath.idr = ($highest_value * $usd_to_idr_rate | floor)")
         fi
     else
         # If CoinGecko failed, use fallback with updated values
-        local fallback_usd_ath=111814
+        local fallback_usd_ath=108353
         if (( $(echo "$binance_24h_high > $fallback_usd_ath" | bc -l 2>/dev/null || echo 0) )); then
             fallback_usd_ath=$binance_24h_high
             provider_used="Binance_24h_Fallback"
@@ -631,20 +668,29 @@ format_delta30() {
     local previous="$2"
     local symbol="$3"
 
+    # Check if previous value is valid
+    if [[ -z "$previous" || "$previous" == "0" || "$previous" == "null" ]]; then
+        echo -e "Δ~30s: ${WHITE}New data${NC}"
+        return
+    fi
+
     local delta
-    delta=$(echo "$current - $previous" | bc -l)
+    delta=$(echo "$current - $previous" | bc -l 2>/dev/null || echo "0")
     local delta_sign=$(echo "$delta" | grep -o '^-')
 
     # Buat nilai absolute untuk tampilan
     clean_delta=$(echo "$delta" | sed 's/^[-+]//')
     formatted_delta=$(printf "%'.2f" "$clean_delta")
 
-    # Hitung persentase tetap untuk info
-    local pct
-    pct=$(echo "scale=6; ($delta / $previous) * 100" | bc -l)
-    abs_pct=$(echo "$pct" | sed 's/^[-+]//')
-    formatted_pct=$(printf "%.2f" "$pct")
-    formatted_abs_pct=$(printf "%.2f" "$abs_pct")
+    # Hitung persentase tetap untuk info (with zero division check)
+    local pct=0
+    local abs_pct=0
+    if [[ "$previous" != "0" && ! -z "$previous" ]]; then
+        pct=$(echo "scale=6; ($delta / $previous) * 100" | bc -l 2>/dev/null || echo "0")
+        abs_pct=$(echo "$pct" | sed 's/^[-+]//' 2>/dev/null || echo "0")
+    fi
+    formatted_pct=$(printf "%.2f" "$pct" 2>/dev/null || echo "0.00")
+    formatted_abs_pct=$(printf "%.2f" "$abs_pct" 2>/dev/null || echo "0.00")
 
     # Warna berdasarkan delta absolut (naik/turun harga)
     if [[ -z "$delta_sign" ]]; then
@@ -704,18 +750,24 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 # Get ATH data with bulletproof system
 ath_data=$(fetch_bulletproof_ath)
 if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . > /dev/null 2>&1; then
-    usd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd // 73817')
-    eur_ath=$(echo "$ath_data" | jq -r '.market_data.ath.eur // 68000')
-    gbp_ath=$(echo "$ath_data" | jq -r '.market_data.ath.gbp // 58000')
-    sgd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.sgd // 98564')
-    chf_ath=$(echo "$ath_data" | jq -r '.market_data.ath.chf // 68000')
-    jpy_ath=$(echo "$ath_data" | jq -r '.market_data.ath.jpy // 11500000')
-    krw_ath=$(echo "$ath_data" | jq -r '.market_data.ath.krw // 150000000')
-    idr_ath=$(echo "$ath_data" | jq -r '.market_data.ath.idr // 1143000000')
+    usd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd // 108353')
+    eur_ath=$(echo "$ath_data" | jq -r '.market_data.ath.eur // 98423')
+    gbp_ath=$(echo "$ath_data" | jq -r '.market_data.ath.gbp // 82790')
+    sgd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.sgd // 145689')
+    chf_ath=$(echo "$ath_data" | jq -r '.market_data.ath.chf // 95423')
+    jpy_ath=$(echo "$ath_data" | jq -r '.market_data.ath.jpy // 16254000')
+    krw_ath=$(echo "$ath_data" | jq -r '.market_data.ath.krw // 148500000')
+    idr_ath=$(echo "$ath_data" | jq -r '.market_data.ath.idr // 1725000000')
     
     # Check if ATH was updated and get source
     ath_updated=$(echo "$ath_data" | jq -r '.market_data.ath_updated // false')
     ath_source=$(echo "$ath_data" | jq -r '.market_data.ath_source // "CoinGecko"')
+    
+    # Get ATH dates if available
+    usd_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.usd // ""')
+    eur_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.eur // ""')
+    sgd_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.sgd // ""')
+    idr_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.idr // ""')
     
     # Display ATH values with update indicator
     ath_indicator=""
@@ -723,14 +775,37 @@ if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . > /dev/null 2>&1; then
         ath_indicator="${GREEN}🔥 NEW ATH! ${NC}"
     fi
     
-    echo -e "USD: ${YELLOW}\$$(printf "%'15.2f" "$usd_ath")${NC} $ath_indicator"
-    echo -e "EUR: ${YELLOW}€$(printf "%'15.2f" "$eur_ath")${NC}"
+    # Format ATH display with dates for main currencies
+    if [[ ! -z "$usd_ath_date" && "$usd_ath_date" != "null" ]]; then
+        echo -e "USD: ${YELLOW}\$$(printf "%'15.2f" "$usd_ath")${NC} $ath_indicator ${WHITE}($usd_ath_date)${NC}"
+    else
+        echo -e "USD: ${YELLOW}\$$(printf "%'15.2f" "$usd_ath")${NC} $ath_indicator"
+    fi
+    
+    if [[ ! -z "$eur_ath_date" && "$eur_ath_date" != "null" ]]; then
+        echo -e "EUR: ${YELLOW}€$(printf "%'15.2f" "$eur_ath")${NC} ${WHITE}($eur_ath_date)${NC}"
+    else
+        echo -e "EUR: ${YELLOW}€$(printf "%'15.2f" "$eur_ath")${NC}"
+    fi
+    
     echo -e "GBP: ${YELLOW}£$(printf "%'15.2f" "$gbp_ath")${NC}"
-    echo -e "SGD: ${YELLOW}S\$$(printf "%'14.2f" "$sgd_ath")${NC}"
+    
+    if [[ ! -z "$sgd_ath_date" && "$sgd_ath_date" != "null" ]]; then
+        echo -e "SGD: ${YELLOW}S\$$(printf "%'14.2f" "$sgd_ath")${NC} ${WHITE}($sgd_ath_date)${NC}"
+    else
+        echo -e "SGD: ${YELLOW}S\$$(printf "%'14.2f" "$sgd_ath")${NC}"
+    fi
+    
     echo -e "CHF: ${YELLOW}CHF$(printf "%'13.2f" "$chf_ath")${NC}"
     echo -e "JPY: ${YELLOW}¥$(printf "%'15.0f" "$jpy_ath")${NC}"
     echo -e "KRW: ${YELLOW}₩$(printf "%'15.0f" "$krw_ath")${NC}"
-    echo -e "IDR: ${YELLOW}IDR$(printf "%'13.0f" "$idr_ath")${NC}"
+    
+    if [[ ! -z "$idr_ath_date" && "$idr_ath_date" != "null" ]]; then
+        echo -e "IDR: ${YELLOW}IDR$(printf "%'13.0f" "$idr_ath")${NC} ${WHITE}($idr_ath_date)${NC}"
+    else
+        echo -e "IDR: ${YELLOW}IDR$(printf "%'13.0f" "$idr_ath")${NC}"
+    fi
+    
     echo -e "${CYAN}📡 ATH Source: $ath_source${NC}"
 else
     echo -e "${RED}❌ ATH data unavailable${NC}"
