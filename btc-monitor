@@ -162,6 +162,71 @@ get_country_name() {
 
 # Enhanced Bitcoin Node & Market Monitor with continuous loop
 
+# Helper: Extract IP from addr (supports IPv4 "1.2.3.4:8333" and IPv6 "[2001:db8::1]:8333")
+extract_ip_from_addr() {
+    local addr="$1"
+    # If it's in the form [IPv6]:port
+    if [[ "$addr" =~ ^\[(.*)\]:(.*)$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return 0
+    fi
+    # If there's a colon, determine whether it's IPv4:port or bare IPv6
+    if [[ "$addr" == *:* ]]; then
+        # Count colons; if >1 and no brackets, assume bare IPv6 without port
+        local colon_count
+        colon_count=$(echo "$addr" | awk -F':' '{print NF-1}')
+        if [[ "$colon_count" -gt 1 ]]; then
+            echo "$addr"
+            return 0
+        fi
+        # IPv4:port → take part before the first colon
+        echo "${addr%%:*}"
+        return 0
+    fi
+    # No colon → already just an IP
+    echo "$addr"
+}
+
+# Cached country lookup with multi-source fallbacks
+get_country_info_cached() {
+    local ip="$1"
+    local bitcoin_dir="/Users/bermekbukair/bitcoin"
+    local cache_file="$bitcoin_dir/peer_country_cache.txt"
+    mkdir -p "$bitcoin_dir"
+
+    # Check cache first
+    local cached_code=""
+    if [[ -f "$cache_file" ]]; then
+        cached_code=$(awk -F'|' -v key="$ip" '$1==key {print $2; exit}' "$cache_file" 2>/dev/null)
+    fi
+    if [[ -n "$cached_code" ]]; then
+        echo "$cached_code"
+        return 0
+    fi
+
+    # Use existing function (ipinfo → ip-api) first
+    local code
+    code=$(get_country_info "$ip")
+
+    # Tertiary fallback: ipwho.is
+    if [[ -z "$code" || "$code" == "null" ]]; then
+        local r3
+        r3=$(curl -s --connect-timeout 3 --max-time 5 "https://ipwho.is/$ip" 2>/dev/null)
+        if [[ -n "$r3" ]] && echo "$r3" | jq . > /dev/null 2>&1; then
+            code=$(echo "$r3" | jq -r '.country_code // empty')
+        fi
+    fi
+
+    # Save and return
+    if [[ -n "$code" ]]; then
+        echo "$ip|$code" >> "$cache_file"
+        echo "$code"
+        return 0
+    fi
+
+    echo ""
+}
+
 # RPC Configuration - Use environment variables for security
 RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
 RPC_PASS=${BTC_RPC_PASS:-"vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN"}
@@ -281,25 +346,34 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
     # 🧠 Tambahkan ini agar fungsi benar-benar dijalankan
     get_ip_info
 
-    # Show ALL peer IP addresses with country flags and names
+    # Show ALL peer IP addresses with country flags, names, and latency
     echo -e "   ${CYAN}Connected Peers (all $connections):${NC}"
-    peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getpeerinfo 2>/dev/null | jq -r '.[].addr')
+    peer_lines=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getpeerinfo 2>/dev/null | jq -r '.[] | "\(.addr)|\(.minping // .pingtime // 0)"')
     
-    if [ ! -z "$peer_ips" ]; then
-        echo "$peer_ips" | while read ip; do
-            if [ ! -z "$ip" ]; then
-                # Extract just IP without port for geolocation
-                clean_ip=$(echo "$ip" | cut -d':' -f1 | sed 's/\[//g' | sed 's/\]//g')
+    if [ ! -z "$peer_lines" ]; then
+        echo "$peer_lines" | while IFS='|' read -r addr ping; do
+            if [ ! -z "$addr" ]; then
+                # Extract IP safely for IPv4/IPv6
+                clean_ip=$(extract_ip_from_addr "$addr")
                 
-                # Get country info for this IP
-                country_code=$(get_country_info "$clean_ip")
+                # Get country info for this IP with caching and multi-source fallback
+                country_code=$(get_country_info_cached "$clean_ip")
                 if [[ ! -z "$country_code" ]]; then
                     country_flag=$(get_country_flag "$country_code")
                     country_name=$(get_country_name "$country_code")
-                    echo -e "     ${country_flag}  ${WHITE}$ip${NC} ${CYAN}($country_name)${NC}"
                 else
-                    echo -e "     🏳️ ${WHITE}$ip${NC} ${CYAN}(Unknown)${NC}"
+                    country_flag="🏳️"
+                    country_name="Unknown"
                 fi
+
+                # Convert ping seconds to ms, if available
+                if [[ -z "$ping" || "$ping" == "0" || "$ping" == "null" ]]; then
+                    latency="—"
+                else
+                    latency="$(awk -v p="$ping" 'BEGIN{printf "%.0f", p*1000}') ms"
+                fi
+
+                echo -e "     ${country_flag}  ${WHITE}$addr${NC} ${CYAN}($country_name)${NC}  ${WHITE}${latency}${NC}"
             fi
         done
         
