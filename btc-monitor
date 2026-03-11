@@ -9,7 +9,10 @@ PURPLE='\033[0;35m'
 CYAN='\033[0;36m'
 WHITE='\033[1;37m'
 BOLD='\033[1m'
+DIM='\033[2m'
+ITALIC='\033[3m'
 NC='\033[0m' # No Color
+HINT='\033[2;33m' # Dim yellow for beginner hints
 
 # Country flag mapping function
 get_country_flag() {
@@ -332,6 +335,7 @@ mempool_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpas
 
 # Node Status Section
 echo -e "${BOLD}${GREEN}🔧 NODE STATUS${NC}"
+echo -e "${HINT}   📖 Your node = your own copy of Bitcoin's ledger. No middleman.${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
@@ -359,9 +363,9 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
     fi
     
     echo -e "Status: $sync_status"
-    echo -e "Height: ${WHITE}$(printf "%'d" $blocks)${NC} / ${WHITE}$(printf "%'d" $headers)${NC}"
-    echo -e "Peers: $peer_status"
-    echo -e "Mempool: ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1024/1024" | bc) MB)"
+    echo -e "Height: ${WHITE}$(printf "%'d" $blocks)${NC} / ${WHITE}$(printf "%'d" $headers)${NC}  ${HINT}← each block = a page in Bitcoin's accounting book${NC}"
+    echo -e "Peers: $peer_status  ${HINT}← other computers you're connected to, like neighbors sharing notes${NC}"
+    echo -e "Mempool: ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1024/1024" | bc) MB)  ${HINT}← waiting room for unconfirmed transactions${NC}"
     
     # Show public IP first (VPN detection for network engineers!) 🕵️‍♂️
     echo -e "${CYAN}🌐 Network Information:${NC}"
@@ -472,6 +476,9 @@ echo
 
 # Fee Estimation Section (mempool.space + local node)
 echo -e "${BOLD}${YELLOW}💸 FEE ESTIMATES${NC}"
+echo -e "${HINT}   📖 Fees = tips to miners so they include your transaction faster.${NC}"
+echo -e "${HINT}   📖 sat/vB = satoshis per virtual byte. Like paying per gram for express shipping.${NC}"
+echo -e "${HINT}   📖 1 sat = 0.00000001 BTC (the smallest unit, like cents to dollars).${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 # Fetch mempool.space fee recommendations (free, unlimited, no key)
@@ -521,12 +528,15 @@ if [[ -n "$mempool_global" ]] && echo "$mempool_global" | jq -e '.count' >/dev/n
     echo -e "  ${CYAN}🌍 Network mempool:${NC} ${WHITE}$(printf "%'d" $global_mempool_count)${NC} tx (${WHITE}${global_mb}${NC} MvB)"
     if [[ -n "$mempool_size" ]]; then
         echo -e "  ${CYAN}🖥  Your mempool:${NC}   ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1048576" | bc) MB)"
+        echo -e "  ${HINT}📖 Yours < Network? Normal — pruned nodes see fewer tx. Like a local post office vs the main hub.${NC}"
     fi
 fi
 echo
 
 # Price Section
 echo -e "${BOLD}${PURPLE}💰 MARKET DATA ${CYAN}(Multi-Provider APIs)${NC}"
+echo -e "${HINT}   📖 Live BTC price from multiple exchanges. ▲ green = up, ▼ red = down in 24h.${NC}"
+echo -e "${HINT}   📖 Δ~30s = price change since last refresh (30 seconds ago).${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 # Get current price data with proper timezone handling and dates
@@ -996,6 +1006,7 @@ write_current_prices
 
 # ATH Section (separate)
 echo -e "${BOLD}${PURPLE}📊 ALL-TIME HIGH (ATH)${NC}"
+echo -e "${HINT}   📖 ATH = the highest price Bitcoin has EVER reached. Like a world record.${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 # Get ATH data with bulletproof system
 ath_data=$(fetch_bulletproof_ath)
@@ -1060,6 +1071,7 @@ echo
 
 # Supply Section (optimized, no external script call)
 echo -e "${BOLD}${BLUE}⚡ SUPPLY INFO${NC}"
+echo -e "${HINT}   📖 Only 21 million BTC will ever exist. Like gold — scarce by design.${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 if [ ! -z "$blocks" ]; then
@@ -1091,9 +1103,9 @@ if [ ! -z "$blocks" ]; then
     days_to_halving=$((blocks_to_halving * 10 / 1440))
     
     echo -e "Current Supply: ${WHITE}$(printf "%'.0f" "$total_supply")${NC} BTC (${percent_mined}%)"
-    echo -e "Remaining: ${WHITE}$(printf "%'.0f" "$remaining")${NC} BTC"
-    echo -e "Block Reward: ${WHITE}$current_reward${NC} BTC"
-    echo -e "Next Halving: ${YELLOW}$(printf "%'d" $blocks_to_halving)${NC} blocks (~$(printf "%'d" $days_to_halving) days)"
+    echo -e "Remaining: ${WHITE}$(printf "%'.0f" "$remaining")${NC} BTC  ${HINT}← unmined BTC, still locked in the code${NC}"
+    echo -e "Block Reward: ${WHITE}$current_reward${NC} BTC  ${HINT}← reward miners get for each block, like a paycheck${NC}"
+    echo -e "Next Halving: ${YELLOW}$(printf "%'d" $blocks_to_halving)${NC} blocks (~$(printf "%'d" $days_to_halving) days)  ${HINT}← reward cuts in half. Less new BTC = more scarce${NC}"
 else
     echo -e "${RED}❌ Supply data unavailable${NC}"
 fi
@@ -1101,6 +1113,7 @@ echo
 
 # Network Hashrate & Difficulty Section
 echo -e "${BOLD}${PURPLE}⛏  NETWORK & NODE STATS${NC}"
+echo -e "${HINT}   📖 How powerful the Bitcoin network is, and how your node is doing.${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 mining_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getmininginfo 2>/dev/null)
@@ -1116,8 +1129,8 @@ if [[ -n "$mining_info" ]] && echo "$mining_info" | jq -e '.difficulty' >/dev/nu
     # Format difficulty to T (trillions)
     difficulty_t=$(echo "scale=2; $difficulty / 1000000000000" | bc 2>/dev/null)
 
-    echo -e "Hashrate:   ${WHITE}${hashrate_eh} EH/s${NC}"
-    echo -e "Difficulty: ${WHITE}${difficulty_t} T${NC}"
+    echo -e "Hashrate:   ${WHITE}${hashrate_eh} EH/s${NC}  ${HINT}← total computing power securing Bitcoin. Like all the world's locks combined${NC}"
+    echo -e "Difficulty: ${WHITE}${difficulty_t} T${NC}  ${HINT}← how hard the math puzzle is. Higher = harder to mine${NC}"
 
     # Estimate next difficulty adjustment
     # Adjustment happens every 2016 blocks
@@ -1125,7 +1138,7 @@ if [[ -n "$mining_info" ]] && echo "$mining_info" | jq -e '.difficulty' >/dev/nu
     last_adjustment=$(( (current_block / 2016) * 2016 ))
     next_adjustment=$(( last_adjustment + 2016 ))
     blocks_until_adj=$(( next_adjustment - current_block ))
-    echo -e "Next Diff Adj: ${YELLOW}${blocks_until_adj}${NC} blocks (~$(( blocks_until_adj * 10 / 1440 )) days)"
+    echo -e "Next Diff Adj: ${YELLOW}${blocks_until_adj}${NC} blocks (~$(( blocks_until_adj * 10 / 1440 )) days)  ${HINT}← auto-recalibrates every ~2 weeks to keep blocks at ~10min${NC}"
 fi
 
 # Node uptime
@@ -1169,6 +1182,8 @@ if [[ -d "$bitcoin_data_dir" ]]; then
 
     echo -e "Disk Usage: ${disk_color}${blocks_gb} GB${NC} blocks (${prune_pct}% of ${prune_limit_mb}MB prune limit)"
     echo -e "            ${WHITE}${chainstate_mb} MB${NC} chainstate | ${WHITE}${total_gb} GB${NC} total"
+    echo -e "            ${HINT}📖 Pruned = only keeps recent blocks, like a library that recycles old newspapers${NC}"
+    echo -e "            ${HINT}📖 Chainstate = who owns what right now. Blocks = transaction history${NC}"
 fi
 echo
 
