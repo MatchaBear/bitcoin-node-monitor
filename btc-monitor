@@ -600,18 +600,12 @@ fetch_bulletproof_price() {
         return 0
     fi
     
-    # Provider 5: Fallback with recent approximate values (updated regularly)
-    case "$currency_lower" in
-        "usd") echo '{"bitcoin":{"usd":108000,"usd_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "eur") echo '{"bitcoin":{"eur":98000,"eur_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "gbp") echo '{"bitcoin":{"gbp":84000,"gbp_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "sgd") echo '{"bitcoin":{"sgd":145000,"sgd_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "chf") echo '{"bitcoin":{"chf":95000,"chf_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "jpy") echo '{"bitcoin":{"jpy":16200000,"jpy_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "krw") echo '{"bitcoin":{"krw":148000000,"krw_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        "idr") echo '{"bitcoin":{"idr":1720000000,"idr_24h_change":0,"provider":"Fallback Cache"}}' ;;
-        *) echo '{"bitcoin":{"'$currency_lower'":0,"'${currency_lower}'_24h_change":0,"provider":"Fallback Cache"}}' ;;
-    esac
+    # Provider 5: Use last known prices from file cache
+    local cached_price=0
+    if [[ -f "$SCRIPT_DIR/btc_last_prices.txt" ]]; then
+        cached_price=$(grep "^$currency_upper:" "$SCRIPT_DIR/btc_last_prices.txt" 2>/dev/null | cut -d: -f2)
+    fi
+    echo "{\"bitcoin\":{\"$currency_lower\":${cached_price:-0},\"${currency_lower}_24h_change\":0,\"provider\":\"Last Known\"}}"
     return 0
 }
 
@@ -814,18 +808,28 @@ else
             jpy_change_pct="$usd_change_pct"; krw_change_pct="$usd_change_pct"
             idr_change_pct="$usd_change_pct"
         else
-            # Last resort: hardcoded fallback - DO NOT save to delta file
+            # Last resort: use last known prices from btc_last_prices.txt
             prices_are_real=false
-            usd_price=70000; eur_price=60400; gbp_price=52100
-            sgd_price=88900; chf_price=59000; jpy_price=10400000
-            krw_price=101200000; idr_price=1155000000
+            if [[ -f "$SCRIPT_DIR/btc_last_prices.txt" ]]; then
+                usd_price=$(grep "^USD:" "$SCRIPT_DIR/btc_last_prices.txt" | cut -d: -f2)
+                eur_price=$(grep "^EUR:" "$SCRIPT_DIR/btc_last_prices.txt" | cut -d: -f2)
+                gbp_price=$(grep "^GBP:" "$SCRIPT_DIR/btc_last_prices.txt" | cut -d: -f2)
+                sgd_price=$(grep "^SGD:" "$SCRIPT_DIR/btc_last_prices.txt" | cut -d: -f2)
+                chf_price=$(grep "^CHF:" "$SCRIPT_DIR/btc_last_prices.txt" | cut -d: -f2)
+                jpy_price=$(grep "^JPY:" "$SCRIPT_DIR/btc_last_prices.txt" | cut -d: -f2)
+                krw_price=$(grep "^KRW:" "$SCRIPT_DIR/btc_last_prices.txt" | cut -d: -f2)
+                idr_price=$(grep "^IDR:" "$SCRIPT_DIR/btc_last_prices.txt" | cut -d: -f2)
+            fi
+            usd_price=${usd_price:-0}; eur_price=${eur_price:-0}; gbp_price=${gbp_price:-0}
+            sgd_price=${sgd_price:-0}; chf_price=${chf_price:-0}; jpy_price=${jpy_price:-0}
+            krw_price=${krw_price:-0}; idr_price=${idr_price:-0}
             usd_change_pct=0; eur_change_pct=0; gbp_change_pct=0
             sgd_change_pct=0; chf_change_pct=0; jpy_change_pct=0
             krw_change_pct=0; idr_change_pct=0
-            USD_PROVIDER="Fallback"; EUR_PROVIDER="Fallback"
-            GBP_PROVIDER="Fallback"; SGD_PROVIDER="Fallback"
-            CHF_PROVIDER="Fallback"; JPY_PROVIDER="Fallback"
-            KRW_PROVIDER="Fallback"; IDR_PROVIDER="Fallback"
+            USD_PROVIDER="Last Known"; EUR_PROVIDER="Last Known"
+            GBP_PROVIDER="Last Known"; SGD_PROVIDER="Last Known"
+            CHF_PROVIDER="Last Known"; JPY_PROVIDER="Last Known"
+            KRW_PROVIDER="Last Known"; IDR_PROVIDER="Last Known"
         fi
     fi
 fi
@@ -842,7 +846,7 @@ idr_change_raw=$(echo "scale=2; $idr_price * $idr_change_pct / 100" | bc 2>/dev/
 
 # Write current prices to file for future reference
 write_current_prices() {
-    cat > btc_last_prices.txt <<EOF
+    cat > "$SCRIPT_DIR/btc_last_prices.txt" <<EOF
 USD:$usd_price
 EUR:$eur_price
 GBP:$gbp_price
@@ -920,8 +924,8 @@ if [[ "$api_success" == "true" ]]; then
     # Read previous prices from file defined earlier
     read_previous_price() {
     local currency="$1"
-    if [[ -f "btc_last_prices.txt" ]]; then
-        grep "^$currency:" btc_last_prices.txt | cut -d':' -f2
+    if [[ -f "$SCRIPT_DIR/btc_last_prices.txt" ]]; then
+        grep "^$currency:" "$SCRIPT_DIR/btc_last_prices.txt" | cut -d':' -f2
     else
         echo ""
     fi
