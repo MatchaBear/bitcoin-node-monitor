@@ -1,0 +1,25 @@
+{
+  "timestamp": 1754941055,
+  "currencies": {
+    "USD": {
+      "flag": "🇺🇸",
+      "symbol": "$"
+    },
+    "": {
+      "flag": "🏳️",
+      "symbol": ""
+    },
+    "EUR": {
+      "flag": "🇩🇪",
+      "symbol": "€"
+    },
+    "SGD": {
+      "flag": "🇸🇬",
+      "symbol": "$"
+    },
+    "IDR": {
+      "flag": "🇮🇩",
+      "symbol": "Rp"
+    }
+  }
+}
