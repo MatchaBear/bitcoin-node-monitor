@@ -227,9 +227,17 @@ get_country_info_cached() {
     echo ""
 }
 
-# RPC Configuration - Use environment variables for security
+# Load credentials from .env file
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+
+# RPC Configuration - loaded from .env (no hardcoded secrets)
 RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
-RPC_PASS=${BTC_RPC_PASS:-"vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN"}
+RPC_PASS=${BTC_RPC_PASS:-""}
 
 clear
 echo -e "${BOLD}${GREEN}Starting Bitcoin Node Monitor...${NC}"
@@ -289,7 +297,7 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
 
     # Get public IP and ISP info using ipinfo.io and ipapi.co
     get_ip_info() {
-        local IPINFO_TOKEN="6902bfdd9ec8e3"
+        local IPINFO_TOKEN="${IPINFO_TOKEN:-}"
         local bitcoin_dir="/Users/bermekbukair/bitcoin"
         local ip_file="$bitcoin_dir/last_ip.txt"
         local skip_ip_lookup=false
@@ -318,7 +326,11 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
 
         echo "$public_ip" > "$ip_file"
 
-        ip_info=$(curl -s --connect-timeout 5 "https://ipinfo.io/$public_ip?token=$IPINFO_TOKEN")
+        if [[ -n "$IPINFO_TOKEN" ]]; then
+            ip_info=$(curl -s --connect-timeout 5 "https://ipinfo.io/$public_ip?token=$IPINFO_TOKEN")
+        else
+            ip_info=$(curl -s --connect-timeout 5 "https://ipinfo.io/$public_ip")
+        fi
         isp=$(echo "$ip_info" | jq -r '.org // empty')
         city=$(echo "$ip_info" | jq -r '.city // empty')
         country=$(echo "$ip_info" | jq -r '.country // empty')
@@ -603,51 +615,104 @@ EOF
     return 0
 }
 
-# Fetch bulletproof multi-currency data - NEVER fails!
+# Fetch live market data - batched for efficiency (1 API call instead of 8)
 echo -e "${CYAN}Fetching live market data...${NC}"
+prices_are_real=true
 
-# Get individual currency data from multiple providers
-usd_data=$(fetch_bulletproof_price "USD")
-eur_data=$(fetch_bulletproof_price "EUR")
-gbp_data=$(fetch_bulletproof_price "GBP")
-sgd_data=$(fetch_bulletproof_price "SGD")
-chf_data=$(fetch_bulletproof_price "CHF")
-jpy_data=$(fetch_bulletproof_price "JPY")
-krw_data=$(fetch_bulletproof_price "KRW")
-idr_data=$(fetch_bulletproof_price "IDR")
-
-# Process sophisticated multi-currency data with individual changes
-process_currency_data() {
-    local data="$1"
-    local currency="$2"
-    
-    if [[ "$data" != "API_FAILED" ]] && echo "$data" | jq . >/dev/null 2>&1; then
-        local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
-        local price=$(echo "$data" | jq -r ".bitcoin.$currency_lower // 0" 2>/dev/null)
-        local change=$(echo "$data" | jq -r ".bitcoin.${currency_lower}_24h_change // 0" 2>/dev/null)
-        local provider=$(echo "$data" | jq -r ".bitcoin.provider // \"Unknown\"" 2>/dev/null)
-        
-        # Calculate raw change
-        if [[ "$price" != "0" && "$change" != "0" && "$change" != "null" ]]; then
-            local raw_change=$(echo "scale=2; $price * $change / 100" | bc 2>/dev/null || echo "0")
-            echo "$price|$change|$raw_change|$provider"
-        else
-            echo "$price|0|0|$provider"
-        fi
-    else
-        echo "0|0|0"
-    fi
+# Helper to extract price/change from CryptoCompare batch result
+extract_cc() {
+    local cur="$1" field="$2"
+    echo "$cc_batch" | jq -r ".RAW.BTC.$cur.$field // 0" 2>/dev/null
 }
 
-# Process all currencies with their individual data
-IFS='|' read usd_price usd_change_pct usd_change_raw USD_PROVIDER <<< "$(process_currency_data "$usd_data" "USD")"
-IFS='|' read eur_price eur_change_pct eur_change_raw EUR_PROVIDER <<< "$(process_currency_data "$eur_data" "EUR")"
-IFS='|' read gbp_price gbp_change_pct gbp_change_raw GBP_PROVIDER <<< "$(process_currency_data "$gbp_data" "GBP")"
-IFS='|' read sgd_price sgd_change_pct sgd_change_raw SGD_PROVIDER <<< "$(process_currency_data "$sgd_data" "SGD")"
-IFS='|' read chf_price chf_change_pct chf_change_raw CHF_PROVIDER <<< "$(process_currency_data "$chf_data" "CHF")"
-IFS='|' read jpy_price jpy_change_pct jpy_change_raw JPY_PROVIDER <<< "$(process_currency_data "$jpy_data" "JPY")"
-IFS='|' read krw_price krw_change_pct krw_change_raw KRW_PROVIDER <<< "$(process_currency_data "$krw_data" "KRW")"
-IFS='|' read idr_price idr_change_pct idr_change_raw IDR_PROVIDER <<< "$(process_currency_data "$idr_data" "IDR")"
+# Provider 1: CryptoCompare batch (ALL 8 currencies in 1 call)
+ALL_CURRENCIES="USD,EUR,GBP,SGD,CHF,JPY,KRW,IDR"
+cc_batch=$(curl -s --connect-timeout 5 --max-time 10 "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=$ALL_CURRENCIES" 2>/dev/null)
+
+if [[ ! -z "$cc_batch" ]] && echo "$cc_batch" | jq -e '.RAW.BTC.USD.PRICE' >/dev/null 2>&1; then
+    BATCH_PROVIDER="CryptoCompare"
+    usd_price=$(extract_cc USD PRICE); usd_change_pct=$(extract_cc USD CHANGEPCT24HOUR)
+    eur_price=$(extract_cc EUR PRICE); eur_change_pct=$(extract_cc EUR CHANGEPCT24HOUR)
+    gbp_price=$(extract_cc GBP PRICE); gbp_change_pct=$(extract_cc GBP CHANGEPCT24HOUR)
+    sgd_price=$(extract_cc SGD PRICE); sgd_change_pct=$(extract_cc SGD CHANGEPCT24HOUR)
+    chf_price=$(extract_cc CHF PRICE); chf_change_pct=$(extract_cc CHF CHANGEPCT24HOUR)
+    jpy_price=$(extract_cc JPY PRICE); jpy_change_pct=$(extract_cc JPY CHANGEPCT24HOUR)
+    krw_price=$(extract_cc KRW PRICE); krw_change_pct=$(extract_cc KRW CHANGEPCT24HOUR)
+    idr_price=$(extract_cc IDR PRICE); idr_change_pct=$(extract_cc IDR CHANGEPCT24HOUR)
+    USD_PROVIDER="$BATCH_PROVIDER"; EUR_PROVIDER="$BATCH_PROVIDER"
+    GBP_PROVIDER="$BATCH_PROVIDER"; SGD_PROVIDER="$BATCH_PROVIDER"
+    CHF_PROVIDER="$BATCH_PROVIDER"; JPY_PROVIDER="$BATCH_PROVIDER"
+    KRW_PROVIDER="$BATCH_PROVIDER"; IDR_PROVIDER="$BATCH_PROVIDER"
+else
+    # Provider 2: CoinGecko batch (all currencies in 1 call)
+    cg_batch=$(curl -s --connect-timeout 5 --max-time 10 "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur,gbp,sgd,chf,jpy,krw,idr&include_24h_change=true" 2>/dev/null)
+
+    if [[ ! -z "$cg_batch" ]] && echo "$cg_batch" | jq -e '.bitcoin.usd' >/dev/null 2>&1 && [[ "$cg_batch" != *"error_code"* ]]; then
+        BATCH_PROVIDER="CoinGecko"
+        usd_price=$(echo "$cg_batch" | jq -r '.bitcoin.usd // 0')
+        eur_price=$(echo "$cg_batch" | jq -r '.bitcoin.eur // 0')
+        gbp_price=$(echo "$cg_batch" | jq -r '.bitcoin.gbp // 0')
+        sgd_price=$(echo "$cg_batch" | jq -r '.bitcoin.sgd // 0')
+        chf_price=$(echo "$cg_batch" | jq -r '.bitcoin.chf // 0')
+        jpy_price=$(echo "$cg_batch" | jq -r '.bitcoin.jpy // 0')
+        krw_price=$(echo "$cg_batch" | jq -r '.bitcoin.krw // 0')
+        idr_price=$(echo "$cg_batch" | jq -r '.bitcoin.idr // 0')
+        usd_change_pct=$(echo "$cg_batch" | jq -r '.bitcoin.usd_24h_change // 0')
+        eur_change_pct=$(echo "$cg_batch" | jq -r '.bitcoin.eur_24h_change // 0')
+        gbp_change_pct=$(echo "$cg_batch" | jq -r '.bitcoin.gbp_24h_change // 0')
+        sgd_change_pct=$(echo "$cg_batch" | jq -r '.bitcoin.sgd_24h_change // 0')
+        chf_change_pct=$(echo "$cg_batch" | jq -r '.bitcoin.chf_24h_change // 0')
+        jpy_change_pct=$(echo "$cg_batch" | jq -r '.bitcoin.jpy_24h_change // 0')
+        krw_change_pct=$(echo "$cg_batch" | jq -r '.bitcoin.krw_24h_change // 0')
+        idr_change_pct=$(echo "$cg_batch" | jq -r '.bitcoin.idr_24h_change // 0')
+        USD_PROVIDER="$BATCH_PROVIDER"; EUR_PROVIDER="$BATCH_PROVIDER"
+        GBP_PROVIDER="$BATCH_PROVIDER"; SGD_PROVIDER="$BATCH_PROVIDER"
+        CHF_PROVIDER="$BATCH_PROVIDER"; JPY_PROVIDER="$BATCH_PROVIDER"
+        KRW_PROVIDER="$BATCH_PROVIDER"; IDR_PROVIDER="$BATCH_PROVIDER"
+    else
+        # Provider 3: Binance (USD only, estimate others via FX rates)
+        binance_batch=$(curl -s --connect-timeout 5 --max-time 10 "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT" 2>/dev/null)
+        if [[ ! -z "$binance_batch" ]] && echo "$binance_batch" | jq -e '.lastPrice' >/dev/null 2>&1; then
+            usd_price=$(echo "$binance_batch" | jq -r '.lastPrice // 0')
+            usd_change_pct=$(echo "$binance_batch" | jq -r '.priceChangePercent // 0')
+            USD_PROVIDER="Binance"
+            eur_price=$(echo "scale=2; $usd_price * 0.865" | bc); EUR_PROVIDER="Binance+FX"
+            gbp_price=$(echo "scale=2; $usd_price * 0.746" | bc); GBP_PROVIDER="Binance+FX"
+            sgd_price=$(echo "scale=2; $usd_price * 1.270" | bc); SGD_PROVIDER="Binance+FX"
+            chf_price=$(echo "scale=2; $usd_price * 0.842" | bc); CHF_PROVIDER="Binance+FX"
+            jpy_price=$(echo "scale=0; $usd_price * 148.5" | bc); JPY_PROVIDER="Binance+FX"
+            krw_price=$(echo "scale=0; $usd_price * 1445" | bc); KRW_PROVIDER="Binance+FX"
+            idr_price=$(echo "scale=0; $usd_price * 16500" | bc); IDR_PROVIDER="Binance+FX"
+            eur_change_pct="$usd_change_pct"; gbp_change_pct="$usd_change_pct"
+            sgd_change_pct="$usd_change_pct"; chf_change_pct="$usd_change_pct"
+            jpy_change_pct="$usd_change_pct"; krw_change_pct="$usd_change_pct"
+            idr_change_pct="$usd_change_pct"
+        else
+            # Last resort: hardcoded fallback - DO NOT save to delta file
+            prices_are_real=false
+            usd_price=70000; eur_price=60400; gbp_price=52100
+            sgd_price=88900; chf_price=59000; jpy_price=10400000
+            krw_price=101200000; idr_price=1155000000
+            usd_change_pct=0; eur_change_pct=0; gbp_change_pct=0
+            sgd_change_pct=0; chf_change_pct=0; jpy_change_pct=0
+            krw_change_pct=0; idr_change_pct=0
+            USD_PROVIDER="Fallback"; EUR_PROVIDER="Fallback"
+            GBP_PROVIDER="Fallback"; SGD_PROVIDER="Fallback"
+            CHF_PROVIDER="Fallback"; JPY_PROVIDER="Fallback"
+            KRW_PROVIDER="Fallback"; IDR_PROVIDER="Fallback"
+        fi
+    fi
+fi
+
+# Calculate raw change values
+usd_change_raw=$(echo "scale=2; $usd_price * $usd_change_pct / 100" | bc 2>/dev/null || echo "0")
+eur_change_raw=$(echo "scale=2; $eur_price * $eur_change_pct / 100" | bc 2>/dev/null || echo "0")
+gbp_change_raw=$(echo "scale=2; $gbp_price * $gbp_change_pct / 100" | bc 2>/dev/null || echo "0")
+sgd_change_raw=$(echo "scale=2; $sgd_price * $sgd_change_pct / 100" | bc 2>/dev/null || echo "0")
+chf_change_raw=$(echo "scale=2; $chf_price * $chf_change_pct / 100" | bc 2>/dev/null || echo "0")
+jpy_change_raw=$(echo "scale=2; $jpy_price * $jpy_change_pct / 100" | bc 2>/dev/null || echo "0")
+krw_change_raw=$(echo "scale=2; $krw_price * $krw_change_pct / 100" | bc 2>/dev/null || echo "0")
+idr_change_raw=$(echo "scale=2; $idr_price * $idr_change_pct / 100" | bc 2>/dev/null || echo "0")
 
 # Write current prices to file for future reference
 write_current_prices() {
