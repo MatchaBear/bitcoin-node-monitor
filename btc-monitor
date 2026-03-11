@@ -507,9 +507,9 @@ if [[ -n "$local_fee_1" ]] && echo "$local_fee_1" | jq -e '.feerate' >/dev/null 
     local_medium=$(echo "$local_fee_6" | jq -r '.feerate // 0')
     local_slow=$(echo "$local_fee_144" | jq -r '.feerate // 0')
     # Convert BTC/kB to sat/vB (multiply by 100000)
-    local_fast_sv=$(echo "scale=1; $local_fast * 100000" | bc 2>/dev/null)
-    local_medium_sv=$(echo "scale=1; $local_medium * 100000" | bc 2>/dev/null)
-    local_slow_sv=$(echo "scale=1; $local_slow * 100000" | bc 2>/dev/null)
+    local_fast_sv=$(printf "%.1f" "$(echo "scale=2; $local_fast * 100000" | bc 2>/dev/null)" 2>/dev/null)
+    local_medium_sv=$(printf "%.1f" "$(echo "scale=2; $local_medium * 100000" | bc 2>/dev/null)" 2>/dev/null)
+    local_slow_sv=$(printf "%.1f" "$(echo "scale=2; $local_slow * 100000" | bc 2>/dev/null)" 2>/dev/null)
     echo -e "  ${PURPLE}🖥  Local node:${NC}  fast ${WHITE}${local_fast_sv}${NC} / med ${WHITE}${local_medium_sv}${NC} / slow ${WHITE}${local_slow_sv}${NC} sat/vB"
 fi
 
@@ -1020,9 +1020,9 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 ath_data=$(fetch_bulletproof_ath)
 if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . > /dev/null 2>&1; then
     # Use persistent cache as fallback instead of hardcoded values
-    local c_usd=$(get_cached_ath "usd") c_eur=$(get_cached_ath "eur") c_gbp=$(get_cached_ath "gbp")
-    local c_sgd=$(get_cached_ath "sgd") c_chf=$(get_cached_ath "chf") c_jpy=$(get_cached_ath "jpy")
-    local c_krw=$(get_cached_ath "krw") c_idr=$(get_cached_ath "idr")
+    c_usd=$(get_cached_ath "usd"); c_eur=$(get_cached_ath "eur"); c_gbp=$(get_cached_ath "gbp")
+    c_sgd=$(get_cached_ath "sgd"); c_chf=$(get_cached_ath "chf"); c_jpy=$(get_cached_ath "jpy")
+    c_krw=$(get_cached_ath "krw"); c_idr=$(get_cached_ath "idr")
     usd_ath=$(echo "$ath_data" | jq -r ".market_data.ath.usd // ${c_usd:-0}")
     eur_ath=$(echo "$ath_data" | jq -r ".market_data.ath.eur // ${c_eur:-0}")
     gbp_ath=$(echo "$ath_data" | jq -r ".market_data.ath.gbp // ${c_gbp:-0}")
@@ -1138,8 +1138,8 @@ if [[ -n "$mining_info" ]] && echo "$mining_info" | jq -e '.difficulty' >/dev/nu
     difficulty=$(echo "$mining_info" | jq -r '.difficulty')
     hashrate_raw=$(echo "$mining_info" | jq -r '.networkhashps')
 
-    # Format hashrate to EH/s (exahashes)
-    hashrate_eh=$(echo "scale=2; $hashrate_raw / 1000000000000000000" | bc 2>/dev/null)
+    # Format hashrate to EH/s (exahashes) — use printf for clean decimals
+    hashrate_eh=$(printf "%.2f" "$(echo "scale=4; $hashrate_raw / 1000000000000000000" | bc 2>/dev/null)" 2>/dev/null)
     # Format difficulty to T (trillions)
     difficulty_t=$(echo "scale=2; $difficulty / 1000000000000" | bc 2>/dev/null)
 
