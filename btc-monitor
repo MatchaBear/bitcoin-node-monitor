@@ -470,6 +470,61 @@ else
 fi
 echo
 
+# Fee Estimation Section (mempool.space + local node)
+echo -e "${BOLD}${YELLOW}💸 FEE ESTIMATES${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+# Fetch mempool.space fee recommendations (free, unlimited, no key)
+fee_data=$(curl -s --connect-timeout 5 --max-time 8 "https://mempool.space/api/v1/fees/recommended" 2>/dev/null)
+mempool_global=$(curl -s --connect-timeout 5 --max-time 8 "https://mempool.space/api/mempool" 2>/dev/null)
+
+# Local node fee estimates
+local_fee_1=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" estimatesmartfee 1 2>/dev/null)
+local_fee_6=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" estimatesmartfee 6 2>/dev/null)
+local_fee_144=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" estimatesmartfee 144 2>/dev/null)
+
+if [[ -n "$fee_data" ]] && echo "$fee_data" | jq -e '.fastestFee' >/dev/null 2>&1; then
+    fastest=$(echo "$fee_data" | jq -r '.fastestFee')
+    halfhour=$(echo "$fee_data" | jq -r '.halfHourFee')
+    hour=$(echo "$fee_data" | jq -r '.hourFee')
+    economy=$(echo "$fee_data" | jq -r '.economyFee')
+    minimum=$(echo "$fee_data" | jq -r '.minimumFee')
+
+    # Color-code fee urgency
+    echo -e "  ${RED}⚡ Next Block:${NC}  ${WHITE}${fastest} sat/vB${NC}"
+    echo -e "  ${YELLOW}🕐 ~30 min:${NC}    ${WHITE}${halfhour} sat/vB${NC}"
+    echo -e "  ${GREEN}🕐 ~1 hour:${NC}    ${WHITE}${hour} sat/vB${NC}"
+    echo -e "  ${CYAN}🐢 Economy:${NC}    ${WHITE}${economy} sat/vB${NC}"
+    echo -e "  ${BLUE}📉 Minimum:${NC}    ${WHITE}${minimum} sat/vB${NC}"
+    echo -e "  ${CYAN}📡 Source: mempool.space${NC}"
+else
+    echo -e "  ${YELLOW}mempool.space unavailable${NC}"
+fi
+
+# Show local node estimates for comparison
+if [[ -n "$local_fee_1" ]] && echo "$local_fee_1" | jq -e '.feerate' >/dev/null 2>&1; then
+    local_fast=$(echo "$local_fee_1" | jq -r '.feerate // 0')
+    local_medium=$(echo "$local_fee_6" | jq -r '.feerate // 0')
+    local_slow=$(echo "$local_fee_144" | jq -r '.feerate // 0')
+    # Convert BTC/kB to sat/vB (multiply by 100000)
+    local_fast_sv=$(echo "scale=1; $local_fast * 100000" | bc 2>/dev/null)
+    local_medium_sv=$(echo "scale=1; $local_medium * 100000" | bc 2>/dev/null)
+    local_slow_sv=$(echo "scale=1; $local_slow * 100000" | bc 2>/dev/null)
+    echo -e "  ${PURPLE}🖥  Local node:${NC}  fast ${WHITE}${local_fast_sv}${NC} / med ${WHITE}${local_medium_sv}${NC} / slow ${WHITE}${local_slow_sv}${NC} sat/vB"
+fi
+
+# Global mempool size comparison (your node vs network)
+if [[ -n "$mempool_global" ]] && echo "$mempool_global" | jq -e '.count' >/dev/null 2>&1; then
+    global_mempool_count=$(echo "$mempool_global" | jq -r '.count')
+    global_mempool_vsize=$(echo "$mempool_global" | jq -r '.vsize')
+    global_mb=$(echo "scale=1; $global_mempool_vsize / 1048576" | bc 2>/dev/null)
+    echo -e "  ${CYAN}🌍 Network mempool:${NC} ${WHITE}$(printf "%'d" $global_mempool_count)${NC} tx (${WHITE}${global_mb}${NC} MvB)"
+    if [[ -n "$mempool_size" ]]; then
+        echo -e "  ${CYAN}🖥  Your mempool:${NC}   ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1048576" | bc) MB)"
+    fi
+fi
+echo
+
 # Price Section
 echo -e "${BOLD}${PURPLE}💰 MARKET DATA ${CYAN}(Multi-Provider APIs)${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
