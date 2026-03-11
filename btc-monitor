@@ -275,6 +275,41 @@ FX_JPY=$(echo "$FX_RATES_JSON" | jq -r '.rates.JPY // 158')
 FX_KRW=$(echo "$FX_RATES_JSON" | jq -r '.rates.KRW // 1477')
 FX_IDR=$(echo "$FX_RATES_JSON" | jq -r '.rates.IDR // 16898')
 
+# Persistent ATH cache - never lose track of the highest price seen
+ATH_CACHE_FILE="$SCRIPT_DIR/cache/ath_cache.json"
+
+load_ath_cache() {
+    if [[ -f "$ATH_CACHE_FILE" ]]; then
+        cat "$ATH_CACHE_FILE"
+    else
+        echo '{}'
+    fi
+}
+
+save_ath_cache() {
+    local usd_ath="$1" source="$2"
+    local ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+    jq -n \
+        --arg usd "$usd_ath" \
+        --arg eur "$(echo "$usd_ath * $FX_EUR" | bc | cut -d. -f1)" \
+        --arg gbp "$(echo "$usd_ath * $FX_GBP" | bc | cut -d. -f1)" \
+        --arg sgd "$(echo "$usd_ath * $FX_SGD" | bc | cut -d. -f1)" \
+        --arg chf "$(echo "$usd_ath * $FX_CHF" | bc | cut -d. -f1)" \
+        --arg jpy "$(echo "$usd_ath * $FX_JPY" | bc | cut -d. -f1)" \
+        --arg krw "$(echo "$usd_ath * $FX_KRW" | bc | cut -d. -f1)" \
+        --arg idr "$(echo "$usd_ath * $FX_IDR" | bc | cut -d. -f1)" \
+        --arg src "$source" \
+        --arg ts "$ts" \
+        '{usd:($usd|tonumber),eur:($eur|tonumber),gbp:($gbp|tonumber),sgd:($sgd|tonumber),chf:($chf|tonumber),jpy:($jpy|tonumber),krw:($krw|tonumber),idr:($idr|tonumber),source:$src,updated:$ts}' \
+        > "$ATH_CACHE_FILE"
+}
+
+get_cached_ath() {
+    local currency="$1"
+    local cached=$(load_ath_cache)
+    echo "$cached" | jq -r ".$currency // 0" 2>/dev/null
+}
+
 clear
 echo -e "${BOLD}${GREEN}Starting Bitcoin Node Monitor...${NC}"
 sleep 1
@@ -608,7 +643,8 @@ fetch_bulletproof_ath() {
         fi
     else
         # If CoinGecko failed, use fallback with updated values
-        local fallback_usd_ath=108353
+        local cached_ath_usd=$(get_cached_ath "usd")
+        local fallback_usd_ath=${cached_ath_usd:-108353}
         if (( $(echo "$binance_24h_high > $fallback_usd_ath" | bc -l 2>/dev/null || echo 0) )); then
             fallback_usd_ath=$binance_24h_high
             provider_used="Binance_24h_Fallback"
@@ -639,6 +675,13 @@ EOF
         )
     fi
     
+    # Persist ATH to local cache so we never lose it
+    local final_usd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd // 0' 2>/dev/null)
+    local cached_usd_ath=$(get_cached_ath "usd")
+    if (( $(echo "$final_usd_ath > ${cached_usd_ath:-0}" | bc -l 2>/dev/null || echo 0) )); then
+        save_ath_cache "$final_usd_ath" "$provider_used"
+    fi
+
     echo "$ath_data"
     return 0
 }
@@ -917,14 +960,18 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 # Get ATH data with bulletproof system
 ath_data=$(fetch_bulletproof_ath)
 if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . > /dev/null 2>&1; then
-    usd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd // 108353')
-    eur_ath=$(echo "$ath_data" | jq -r '.market_data.ath.eur // 98423')
-    gbp_ath=$(echo "$ath_data" | jq -r '.market_data.ath.gbp // 82790')
-    sgd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.sgd // 145689')
-    chf_ath=$(echo "$ath_data" | jq -r '.market_data.ath.chf // 95423')
-    jpy_ath=$(echo "$ath_data" | jq -r '.market_data.ath.jpy // 16254000')
-    krw_ath=$(echo "$ath_data" | jq -r '.market_data.ath.krw // 148500000')
-    idr_ath=$(echo "$ath_data" | jq -r '.market_data.ath.idr // 1725000000')
+    # Use persistent cache as fallback instead of hardcoded values
+    local c_usd=$(get_cached_ath "usd") c_eur=$(get_cached_ath "eur") c_gbp=$(get_cached_ath "gbp")
+    local c_sgd=$(get_cached_ath "sgd") c_chf=$(get_cached_ath "chf") c_jpy=$(get_cached_ath "jpy")
+    local c_krw=$(get_cached_ath "krw") c_idr=$(get_cached_ath "idr")
+    usd_ath=$(echo "$ath_data" | jq -r ".market_data.ath.usd // ${c_usd:-0}")
+    eur_ath=$(echo "$ath_data" | jq -r ".market_data.ath.eur // ${c_eur:-0}")
+    gbp_ath=$(echo "$ath_data" | jq -r ".market_data.ath.gbp // ${c_gbp:-0}")
+    sgd_ath=$(echo "$ath_data" | jq -r ".market_data.ath.sgd // ${c_sgd:-0}")
+    chf_ath=$(echo "$ath_data" | jq -r ".market_data.ath.chf // ${c_chf:-0}")
+    jpy_ath=$(echo "$ath_data" | jq -r ".market_data.ath.jpy // ${c_jpy:-0}")
+    krw_ath=$(echo "$ath_data" | jq -r ".market_data.ath.krw // ${c_krw:-0}")
+    idr_ath=$(echo "$ath_data" | jq -r ".market_data.ath.idr // ${c_idr:-0}")
     
     # Check if ATH was updated and get source
     ath_updated=$(echo "$ath_data" | jq -r '.market_data.ath_updated // false')
