@@ -1122,6 +1122,79 @@ else
 fi
 echo
 
+# Network Hashrate & Difficulty Section
+echo -e "${BOLD}${PURPLE}⛏  NETWORK & NODE STATS${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+mining_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getmininginfo 2>/dev/null)
+net_totals=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getnettotals 2>/dev/null)
+node_uptime=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" uptime 2>/dev/null)
+
+if [[ -n "$mining_info" ]] && echo "$mining_info" | jq -e '.difficulty' >/dev/null 2>&1; then
+    difficulty=$(echo "$mining_info" | jq -r '.difficulty')
+    hashrate_raw=$(echo "$mining_info" | jq -r '.networkhashps')
+
+    # Format hashrate to EH/s (exahashes)
+    hashrate_eh=$(echo "scale=2; $hashrate_raw / 1000000000000000000" | bc 2>/dev/null)
+    # Format difficulty to T (trillions)
+    difficulty_t=$(echo "scale=2; $difficulty / 1000000000000" | bc 2>/dev/null)
+
+    echo -e "Hashrate:   ${WHITE}${hashrate_eh} EH/s${NC}"
+    echo -e "Difficulty: ${WHITE}${difficulty_t} T${NC}"
+
+    # Estimate next difficulty adjustment
+    # Adjustment happens every 2016 blocks
+    current_block=$blocks
+    last_adjustment=$(( (current_block / 2016) * 2016 ))
+    next_adjustment=$(( last_adjustment + 2016 ))
+    blocks_until_adj=$(( next_adjustment - current_block ))
+    echo -e "Next Diff Adj: ${YELLOW}${blocks_until_adj}${NC} blocks (~$(( blocks_until_adj * 10 / 1440 )) days)"
+fi
+
+# Node uptime
+if [[ -n "$node_uptime" && "$node_uptime" =~ ^[0-9]+$ ]]; then
+    uptime_days=$(( node_uptime / 86400 ))
+    uptime_hours=$(( (node_uptime % 86400) / 3600 ))
+    uptime_mins=$(( (node_uptime % 3600) / 60 ))
+    echo -e "Node Uptime: ${GREEN}${uptime_days}d ${uptime_hours}h ${uptime_mins}m${NC}"
+fi
+
+# Bandwidth usage
+if [[ -n "$net_totals" ]] && echo "$net_totals" | jq -e '.totalbytesrecv' >/dev/null 2>&1; then
+    recv_bytes=$(echo "$net_totals" | jq -r '.totalbytesrecv')
+    sent_bytes=$(echo "$net_totals" | jq -r '.totalbytessent')
+    recv_gb=$(echo "scale=2; $recv_bytes / 1073741824" | bc 2>/dev/null)
+    sent_mb=$(echo "scale=1; $sent_bytes / 1048576" | bc 2>/dev/null)
+    echo -e "Bandwidth:  ${CYAN}▼${NC} ${WHITE}${recv_gb} GB${NC} recv | ${CYAN}▲${NC} ${WHITE}${sent_mb} MB${NC} sent"
+fi
+
+# Disk Usage for Pruned Mode
+bitcoin_data_dir="/Users/bermekbukair/bitcoin/data"
+if [[ -d "$bitcoin_data_dir" ]]; then
+    blocks_size=$(du -sm "$bitcoin_data_dir/blocks/" 2>/dev/null | awk '{print $1}')
+    chainstate_size=$(du -sm "$bitcoin_data_dir/chainstate/" 2>/dev/null | awk '{print $1}')
+    total_data_size=$(du -sm "$bitcoin_data_dir" 2>/dev/null | awk '{print $1}')
+    prune_limit_mb=10000
+
+    blocks_gb=$(echo "scale=1; ${blocks_size:-0} / 1024" | bc 2>/dev/null)
+    chainstate_mb=${chainstate_size:-0}
+    total_gb=$(echo "scale=1; ${total_data_size:-0} / 1024" | bc 2>/dev/null)
+    prune_pct=$(echo "scale=0; ${blocks_size:-0} * 100 / $prune_limit_mb" | bc 2>/dev/null)
+
+    # Color based on how close to prune limit
+    if [[ ${prune_pct:-0} -ge 95 ]]; then
+        disk_color=$RED
+    elif [[ ${prune_pct:-0} -ge 80 ]]; then
+        disk_color=$YELLOW
+    else
+        disk_color=$GREEN
+    fi
+
+    echo -e "Disk Usage: ${disk_color}${blocks_gb} GB${NC} blocks (${prune_pct}% of ${prune_limit_mb}MB prune limit)"
+    echo -e "            ${WHITE}${chainstate_mb} MB${NC} chainstate | ${WHITE}${total_gb} GB${NC} total"
+fi
+echo
+
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${WHITE}🔄 Auto-refresh in 30s | Press ${BOLD}Ctrl+C${NC}${WHITE} to exit${NC}"
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
