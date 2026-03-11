@@ -620,34 +620,15 @@ fetch_bulletproof_ath() {
         ath_data="$coingecko_result"
         provider_used="CoinGecko"
         
-        # Extract ATH dates for main currencies
-        local usd_ath_date eur_ath_date sgd_ath_date idr_ath_date
-        usd_ath_date=$(echo "$coingecko_result" | jq -r '.market_data.ath_date.usd // ""')
-        eur_ath_date=$(echo "$coingecko_result" | jq -r '.market_data.ath_date.eur // ""')
-        sgd_ath_date=$(echo "$coingecko_result" | jq -r '.market_data.ath_date.sgd // ""')
-        idr_ath_date=$(echo "$coingecko_result" | jq -r '.market_data.ath_date.idr // ""')
-        
-        # Add formatted ATH dates to the data
-        if [[ ! -z "$usd_ath_date" && "$usd_ath_date" != "null" ]]; then
-            # Convert ISO datetime to readable format (cross-platform compatible)
-            local usd_formatted_date=$(date -d "${usd_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${usd_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || echo "${usd_ath_date%T*}")
-            ath_data=$(echo "$ath_data" | jq --arg date "$usd_formatted_date" '.market_data.ath_date_formatted.usd = $date')
-        fi
-        
-        if [[ ! -z "$eur_ath_date" && "$eur_ath_date" != "null" ]]; then
-            local eur_formatted_date=$(date -d "${eur_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${eur_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || echo "${eur_ath_date%T*}")
-            ath_data=$(echo "$ath_data" | jq --arg date "$eur_formatted_date" '.market_data.ath_date_formatted.eur = $date')
-        fi
-        
-        if [[ ! -z "$sgd_ath_date" && "$sgd_ath_date" != "null" ]]; then
-            local sgd_formatted_date=$(date -d "${sgd_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${sgd_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || echo "${sgd_ath_date%T*}")
-            ath_data=$(echo "$ath_data" | jq --arg date "$sgd_formatted_date" '.market_data.ath_date_formatted.sgd = $date')
-        fi
-        
-        if [[ ! -z "$idr_ath_date" && "$idr_ath_date" != "null" ]]; then
-            local idr_formatted_date=$(date -d "${idr_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${idr_ath_date%.*}" "+%b %d, %Y" 2>/dev/null || echo "${idr_ath_date%T*}")
-            ath_data=$(echo "$ath_data" | jq --arg date "$idr_formatted_date" '.market_data.ath_date_formatted.idr = $date')
-        fi
+        # Extract and format ATH dates for ALL currencies
+        local cur ath_date_raw formatted_date
+        for cur in usd eur gbp sgd chf jpy krw idr; do
+            ath_date_raw=$(echo "$coingecko_result" | jq -r ".market_data.ath_date.$cur // \"\"")
+            if [[ -n "$ath_date_raw" && "$ath_date_raw" != "null" ]]; then
+                formatted_date=$(date -d "${ath_date_raw%.*}" "+%b %d, %Y" 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${ath_date_raw%.*}" "+%b %d, %Y" 2>/dev/null || echo "${ath_date_raw%T*}")
+                ath_data=$(echo "$ath_data" | jq --arg cur "$cur" --arg date "$formatted_date" '.market_data.ath_date_formatted[$cur] = $date')
+            fi
+        done
     fi
     
     # Step 2: Get current 24h highs from multiple exchanges for comparison
@@ -1036,48 +1017,40 @@ if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . > /dev/null 2>&1; then
     ath_updated=$(echo "$ath_data" | jq -r '.market_data.ath_updated // false')
     ath_source=$(echo "$ath_data" | jq -r '.market_data.ath_source // "CoinGecko"')
     
-    # Get ATH dates if available
+    # Get ATH dates for ALL currencies
     usd_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.usd // ""')
     eur_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.eur // ""')
+    gbp_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.gbp // ""')
     sgd_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.sgd // ""')
+    chf_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.chf // ""')
+    jpy_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.jpy // ""')
+    krw_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.krw // ""')
     idr_ath_date=$(echo "$ath_data" | jq -r '.market_data.ath_date_formatted.idr // ""')
-    
+
     # Display ATH values with update indicator
     ath_indicator=""
     if [[ "$ath_updated" == "true" ]]; then
         ath_indicator="${GREEN}🔥 NEW ATH! ${NC}"
     fi
-    
-    # Format ATH display with dates for main currencies
-    if [[ ! -z "$usd_ath_date" && "$usd_ath_date" != "null" ]]; then
-        echo -e "USD: ${YELLOW}\$$(printf "%'15.2f" "$usd_ath")${NC} $ath_indicator ${WHITE}($usd_ath_date)${NC}"
-    else
-        echo -e "USD: ${YELLOW}\$$(printf "%'15.2f" "$usd_ath")${NC} $ath_indicator"
-    fi
-    
-    if [[ ! -z "$eur_ath_date" && "$eur_ath_date" != "null" ]]; then
-        echo -e "EUR: ${YELLOW}€$(printf "%'15.2f" "$eur_ath")${NC} ${WHITE}($eur_ath_date)${NC}"
-    else
-        echo -e "EUR: ${YELLOW}€$(printf "%'15.2f" "$eur_ath")${NC}"
-    fi
-    
-    echo -e "GBP: ${YELLOW}£$(printf "%'15.2f" "$gbp_ath")${NC}"
-    
-    if [[ ! -z "$sgd_ath_date" && "$sgd_ath_date" != "null" ]]; then
-        echo -e "SGD: ${YELLOW}S\$$(printf "%'14.2f" "$sgd_ath")${NC} ${WHITE}($sgd_ath_date)${NC}"
-    else
-        echo -e "SGD: ${YELLOW}S\$$(printf "%'14.2f" "$sgd_ath")${NC}"
-    fi
-    
-    echo -e "CHF: ${YELLOW}CHF$(printf "%'13.2f" "$chf_ath")${NC}"
-    echo -e "JPY: ${YELLOW}¥$(printf "%'15.0f" "$jpy_ath")${NC}"
-    echo -e "KRW: ${YELLOW}₩$(printf "%'15.0f" "$krw_ath")${NC}"
-    
-    if [[ ! -z "$idr_ath_date" && "$idr_ath_date" != "null" ]]; then
-        echo -e "IDR: ${YELLOW}IDR$(printf "%'13.0f" "$idr_ath")${NC} ${WHITE}($idr_ath_date)${NC}"
-    else
-        echo -e "IDR: ${YELLOW}IDR$(printf "%'13.0f" "$idr_ath")${NC}"
-    fi
+
+    # Helper to format ATH line with optional date
+    show_ath_line() {
+        local label="$1" value="$2" date_str="$3" extra="$4"
+        if [[ -n "$date_str" && "$date_str" != "null" ]]; then
+            echo -e "${label}${YELLOW}${value}${NC} ${extra}${WHITE}($date_str)${NC}"
+        else
+            echo -e "${label}${YELLOW}${value}${NC} ${extra}"
+        fi
+    }
+
+    show_ath_line "USD: " "\$$(printf "%'15.2f" "$usd_ath")" "$usd_ath_date" "$ath_indicator"
+    show_ath_line "EUR: " "€$(printf "%'15.2f" "$eur_ath")" "$eur_ath_date"
+    show_ath_line "GBP: " "£$(printf "%'15.2f" "$gbp_ath")" "$gbp_ath_date"
+    show_ath_line "SGD: " "S\$$(printf "%'14.2f" "$sgd_ath")" "$sgd_ath_date"
+    show_ath_line "CHF: " "CHF$(printf "%'13.2f" "$chf_ath")" "$chf_ath_date"
+    show_ath_line "JPY: " "¥$(printf "%'15.0f" "$jpy_ath")" "$jpy_ath_date"
+    show_ath_line "KRW: " "₩$(printf "%'15.0f" "$krw_ath")" "$krw_ath_date"
+    show_ath_line "IDR: " "IDR$(printf "%'13.0f" "$idr_ath")" "$idr_ath_date"
     
     echo -e "${CYAN}📡 ATH Source: $ath_source${NC}"
 else
