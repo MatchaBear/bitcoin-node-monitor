@@ -13,6 +13,8 @@ DIM='\033[2m'
 ITALIC='\033[3m'
 NC='\033[0m' # No Color
 HINT='\033[2;33m' # Dim yellow for beginner hints
+SECTION='\033[1;35m' # Bright magenta for all section titles
+BRIGHT_CYAN='\033[1;36m' # Bright cyan for visibility on dark backgrounds
 
 # Country flag mapping function
 get_country_flag() {
@@ -323,10 +325,16 @@ while true; do
     
     echo -e "${BOLD}${CYAN}============================================${NC}"
     echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Node & Market Monitor     ${NC}"
-echo -e "${BOLD}${CYAN}============================================${NC}"
-echo -e "${WHITE}📅 $(date '+%Y-%m-%d %H:%M:%S')${NC}"
-echo -e "${CYAN}============================================${NC}"
-echo
+    date_str="📅 $(date '+%Y-%m-%d %H:%M:%S')"
+    # Center the date within 44-char bar (emoji counts as 2 display chars)
+    date_display_len=$(( ${#date_str} + 1 ))  # +1 for emoji width
+    pad_total=$(( 44 - date_display_len ))
+    pad_left=$(( pad_total / 2 ))
+    printf -v date_padding "%*s" "$pad_left" ""
+    echo -e "${BOLD}${CYAN}============================================${NC}"
+    echo -e "${date_padding}${WHITE}${date_str}${NC}"
+    echo -e "${CYAN}============================================${NC}"
+    echo
 
 # Get all data in one go for efficiency
 sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockchaininfo 2>/dev/null)
@@ -334,7 +342,7 @@ network_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpas
 mempool_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getmempoolinfo 2>/dev/null)
 
 # Node Status Section
-echo -e "${BOLD}${GREEN}🔧 NODE STATUS${NC}"
+echo -e "${SECTION}🔧 NODE STATUS${NC}"
 echo -e "${HINT}   📖 Your node = your own copy of Bitcoin's ledger. No middleman.${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
@@ -365,7 +373,8 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
     echo -e "Status: $sync_status"
     echo -e "Height: ${WHITE}$(printf "%'d" $blocks)${NC} / ${WHITE}$(printf "%'d" $headers)${NC}  ${HINT}← each block = a page in Bitcoin's accounting book${NC}"
     echo -e "Peers: $peer_status  ${HINT}← other computers you're connected to, like neighbors sharing notes${NC}"
-    echo -e "Mempool: ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1024/1024" | bc) MB)  ${HINT}← waiting room for unconfirmed transactions${NC}"
+        mempool_mb=$(printf "%.1f" "$(echo "scale=2; $mempool_bytes/1024/1024" | bc)" 2>/dev/null)
+    echo -e "Mempool: ${WHITE}$(printf "%'d" $mempool_size)${NC} tx (${mempool_mb} MB)  ${HINT}← waiting room for unconfirmed transactions${NC}"
     
     # Show public IP first (VPN detection for network engineers!) 🕵️‍♂️
     echo -e "${CYAN}🌐 Network Information:${NC}"
@@ -475,7 +484,7 @@ fi
 echo
 
 # Fee Estimation Section (mempool.space + local node)
-echo -e "${BOLD}${YELLOW}💸 FEE ESTIMATES${NC}"
+echo -e "${SECTION}💸 FEE ESTIMATES${NC}"
 echo -e "${HINT}   📖 Fees = tips to miners so they include your transaction faster.${NC}"
 echo -e "${HINT}   📖 sat/vB = satoshis per virtual byte. Like paying per gram for express shipping.${NC}"
 echo -e "${HINT}   📖 1 sat = 0.00000001 BTC (the smallest unit, like cents to dollars).${NC}"
@@ -502,7 +511,7 @@ if [[ -n "$fee_data" ]] && echo "$fee_data" | jq -e '.fastestFee' >/dev/null 2>&
     echo -e "  ${YELLOW}🕐 ~30 min:${NC}    ${WHITE}${halfhour} sat/vB${NC}"
     echo -e "  ${GREEN}🕐 ~1 hour:${NC}    ${WHITE}${hour} sat/vB${NC}"
     echo -e "  ${CYAN}🐢 Economy:${NC}    ${WHITE}${economy} sat/vB${NC}"
-    echo -e "  ${BLUE}📉 Minimum:${NC}    ${WHITE}${minimum} sat/vB${NC}"
+    echo -e "  ${BRIGHT_CYAN}📉 Minimum:${NC}    ${WHITE}${minimum} sat/vB${NC}"
     echo -e "  ${CYAN}📡 Source: mempool.space${NC}"
 else
     echo -e "  ${YELLOW}mempool.space unavailable${NC}"
@@ -517,34 +526,36 @@ if [[ -n "$local_fee_1" ]] && echo "$local_fee_1" | jq -e '.feerate' >/dev/null 
     local_fast_sv=$(printf "%.1f" "$(echo "scale=2; $local_fast * 100000" | bc 2>/dev/null)" 2>/dev/null)
     local_medium_sv=$(printf "%.1f" "$(echo "scale=2; $local_medium * 100000" | bc 2>/dev/null)" 2>/dev/null)
     local_slow_sv=$(printf "%.1f" "$(echo "scale=2; $local_slow * 100000" | bc 2>/dev/null)" 2>/dev/null)
-    echo -e "  ${PURPLE}🖥  Local node:${NC}  fast ${WHITE}${local_fast_sv}${NC} / med ${WHITE}${local_medium_sv}${NC} / slow ${WHITE}${local_slow_sv}${NC} sat/vB"
+    echo -e "  ${BRIGHT_CYAN}🖥  Local node:${NC}  fast ${WHITE}${local_fast_sv}${NC} / med ${WHITE}${local_medium_sv}${NC} / slow ${WHITE}${local_slow_sv}${NC} sat/vB"
 fi
 
 # Global mempool size comparison (your node vs network)
 if [[ -n "$mempool_global" ]] && echo "$mempool_global" | jq -e '.count' >/dev/null 2>&1; then
     global_mempool_count=$(echo "$mempool_global" | jq -r '.count')
     global_mempool_vsize=$(echo "$mempool_global" | jq -r '.vsize')
-    global_mb=$(echo "scale=1; $global_mempool_vsize / 1048576" | bc 2>/dev/null)
-    echo -e "  ${CYAN}🌍 Network mempool:${NC} ${WHITE}$(printf "%'d" $global_mempool_count)${NC} tx (${WHITE}${global_mb}${NC} MvB)"
+    global_mb=$(printf "%.1f" "$(echo "scale=2; $global_mempool_vsize / 1048576" | bc 2>/dev/null)" 2>/dev/null)
+    echo -e "  ${BRIGHT_CYAN}🌍 Network mempool:${NC} ${WHITE}$(printf "%'d" $global_mempool_count)${NC} tx (${WHITE}${global_mb}${NC} MvB)"
     if [[ -n "$mempool_size" ]]; then
-        echo -e "  ${CYAN}🖥  Your mempool:${NC}   ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1048576" | bc) MB)"
+        local_mb=$(printf "%.1f" "$(echo "scale=2; $mempool_bytes/1048576" | bc 2>/dev/null)" 2>/dev/null)
+        echo -e "  ${BRIGHT_CYAN}🖥  Your mempool:${NC}   ${WHITE}$(printf "%'d" $mempool_size)${NC} tx (${local_mb} MB)"
         echo -e "  ${HINT}📖 Yours < Network? Normal — pruned nodes see fewer tx. Like a local post office vs the main hub.${NC}"
     fi
 fi
 echo
 
 # Price Section
-echo -e "${BOLD}${PURPLE}💰 MARKET DATA ${CYAN}(Multi-Provider APIs)${NC}"
-echo -e "${HINT}   📖 Live BTC price from multiple exchanges. ▲ green = up, ▼ red = down in 24h.${NC}"
-echo -e "${HINT}   📖 Δ~30s = price change since last refresh (30 seconds ago).${NC}"
+echo -e "${SECTION}💰 MARKET DATA ${BRIGHT_CYAN}(Multi-Provider APIs)${NC}"
+echo -e "${HINT}   📖 Live BTC price from multiple exchanges. ▲/▼ = change vs 24 hours ago.${NC}"
+echo -e "${HINT}   📖 Δ~30s = price change since last dashboard refresh (~30s ago).${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
 # Get current price data with proper timezone handling and dates
 api_time=$(TZ='UTC' date '+%Y-%m-%d %H:%M:%S')
-sg_time=$(TZ='Asia/Singapore' date '+%Y-%m-%d %H:%M:%S')
-jkt_time=$(TZ='Asia/Jakarta' date '+%Y-%m-%d %H:%M:%S')
-echo -e "${CYAN}📡 Last fetched: $api_time UTC${NC}"
-echo -e "${CYAN}   Singapore: $sg_time SGT | Jakarta: $jkt_time WIB${NC}"
+sg_time=$(TZ='Asia/Singapore' date '+%H:%M:%S')
+jkt_time=$(TZ='Asia/Jakarta' date '+%H:%M:%S')
+h24_ago=$(TZ='UTC' date -v-24H '+%Y-%m-%d %H:%M' 2>/dev/null || date -d '24 hours ago' '+%Y-%m-%d %H:%M' 2>/dev/null)
+echo -e "${BRIGHT_CYAN}📡 Fetched: $api_time UTC ${DIM}(24h base: ~$h24_ago UTC)${NC}"
+echo -e "${BRIGHT_CYAN}   SGT: $sg_time | WIB: $jkt_time${NC}"
 
 # Global provider tracking
 USD_PROVIDER=""
@@ -835,9 +846,10 @@ jpy_change_raw=$(echo "scale=2; $jpy_price * $jpy_change_pct / 100" | bc 2>/dev/
 krw_change_raw=$(echo "scale=2; $krw_price * $krw_change_pct / 100" | bc 2>/dev/null || echo "0")
 idr_change_raw=$(echo "scale=2; $idr_price * $idr_change_pct / 100" | bc 2>/dev/null || echo "0")
 
-# Write current prices to file for future reference
+# Write current prices to file for future reference (with timestamp)
 write_current_prices() {
     cat > "$SCRIPT_DIR/btc_last_prices.txt" <<EOF
+TIMESTAMP:$(date '+%H:%M:%S')
 USD:$usd_price
 EUR:$eur_price
 GBP:$gbp_price
@@ -922,11 +934,22 @@ if [[ "$api_success" == "true" ]]; then
     fi
     }
 
+    # Read the timestamp of the previous price snapshot
+    read_previous_timestamp() {
+    if [[ -f "$SCRIPT_DIR/btc_last_prices.txt" ]]; then
+        grep "^TIMESTAMP:" "$SCRIPT_DIR/btc_last_prices.txt" | cut -d':' -f2-
+    else
+        echo ""
+    fi
+    }
+    prev_timestamp=$(read_previous_timestamp)
+
 # Function to format the delta for the last 30 seconds
 format_delta30() {
     local current="$1"
     local previous="$2"
     local symbol="$3"
+    local timestamp="$4"
 
     # Check if previous value is valid
     if [[ -z "$previous" || "$previous" == "0" || "$previous" == "null" ]]; then
@@ -952,48 +975,54 @@ format_delta30() {
     formatted_pct=$(printf "%.2f" "$pct" 2>/dev/null || echo "0.00")
     formatted_abs_pct=$(printf "%.2f" "$abs_pct" 2>/dev/null || echo "0.00")
 
-    # Warna berdasarkan delta absolut (naik/turun harga)
+    # Time label for when the comparison was taken
+    local time_label=""
+    if [[ -n "$timestamp" ]]; then
+        time_label=" ${DIM}vs ${timestamp}${NC}"
+    fi
+
+    # Color based on delta direction
     if [[ -z "$delta_sign" ]]; then
-        echo -e "Δ~30s: ${GREEN}▲ +${formatted_pct}% (${symbol}${formatted_delta}) ${NC}"
+        echo -e "Δ~30s: ${GREEN}▲ +${formatted_pct}% (${symbol}${formatted_delta})${NC}${time_label}"
     elif [[ "$delta_sign" == "-" ]]; then
-        echo -e "Δ~30s: ${RED}▼ −${formatted_abs_pct}% (${symbol}${formatted_delta}) ${NC}"
+        echo -e "Δ~30s: ${RED}▼ −${formatted_abs_pct}% (${symbol}${formatted_delta})${NC}${time_label}"
     else
-        echo -e "Δ~30s: ${WHITE}${formatted_pct}% (${symbol}${formatted_delta}) ${NC}"
+        echo -e "Δ~30s: ${WHITE}${formatted_pct}% (${symbol}${formatted_delta})${NC}${time_label}"
     fi
 }
 
     # Display all currencies with consistent formatting and provider info
     prev_usd_price=$(read_previous_price "USD")
-    delta_usd=$(format_delta30 "$usd_price" "$prev_usd_price" "\$")
-    echo -e "USD: ${WHITE}\$$(printf "%'15.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${CYAN}($USD_PROVIDER)${NC} $delta_usd"
+    delta_usd=$(format_delta30 "$usd_price" "$prev_usd_price" "\$" "$prev_timestamp")
+    echo -e "USD: ${WHITE}\$$(printf "%'15.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${BRIGHT_CYAN}($USD_PROVIDER)${NC} $delta_usd"
 
     prev_eur_price=$(read_previous_price "EUR")
-    delta_eur=$(format_delta30 "$eur_price" "$prev_eur_price" "€")
-    echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${CYAN}($EUR_PROVIDER)${NC} $delta_eur"
+    delta_eur=$(format_delta30 "$eur_price" "$prev_eur_price" "€" "$prev_timestamp")
+    echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${BRIGHT_CYAN}($EUR_PROVIDER)${NC} $delta_eur"
 
     prev_gbp_price=$(read_previous_price "GBP")
-    delta_gbp=$(format_delta30 "$gbp_price" "$prev_gbp_price" "£")
-    echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${CYAN}($GBP_PROVIDER)${NC} $delta_gbp"
+    delta_gbp=$(format_delta30 "$gbp_price" "$prev_gbp_price" "£" "$prev_timestamp")
+    echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${BRIGHT_CYAN}($GBP_PROVIDER)${NC} $delta_gbp"
 
     prev_sgd_price=$(read_previous_price "SGD")
-    delta_sgd=$(format_delta30 "$sgd_price" "$prev_sgd_price" "S\$") 
-    echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${CYAN}($SGD_PROVIDER)${NC} $delta_sgd"
+    delta_sgd=$(format_delta30 "$sgd_price" "$prev_sgd_price" "S\$" "$prev_timestamp")
+    echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${BRIGHT_CYAN}($SGD_PROVIDER)${NC} $delta_sgd"
 
     prev_chf_price=$(read_previous_price "CHF")
-    delta_chf=$(format_delta30 "$chf_price" "$prev_chf_price" "CHF")
-    echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${CYAN}($CHF_PROVIDER)${NC} $delta_chf"
+    delta_chf=$(format_delta30 "$chf_price" "$prev_chf_price" "CHF" "$prev_timestamp")
+    echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${BRIGHT_CYAN}($CHF_PROVIDER)${NC} $delta_chf"
 
     prev_jpy_price=$(read_previous_price "JPY")
-    delta_jpy=$(format_delta30 "$jpy_price" "$prev_jpy_price" "¥")
-    echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${CYAN}($JPY_PROVIDER)${NC} $delta_jpy"
+    delta_jpy=$(format_delta30 "$jpy_price" "$prev_jpy_price" "¥" "$prev_timestamp")
+    echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${BRIGHT_CYAN}($JPY_PROVIDER)${NC} $delta_jpy"
 
     prev_krw_price=$(read_previous_price "KRW")
-    delta_krw=$(format_delta30 "$krw_price" "$prev_krw_price" "₩")
-    echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${CYAN}($KRW_PROVIDER)${NC} $delta_krw"
+    delta_krw=$(format_delta30 "$krw_price" "$prev_krw_price" "₩" "$prev_timestamp")
+    echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${BRIGHT_CYAN}($KRW_PROVIDER)${NC} $delta_krw"
 
     prev_idr_price=$(read_previous_price "IDR")
-    delta_idr=$(format_delta30 "$idr_price" "$prev_idr_price" "IDR")
-    echo -e "IDR: ${WHITE}IDR$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "IDR") ${CYAN}($IDR_PROVIDER)${NC} $delta_idr"
+    delta_idr=$(format_delta30 "$idr_price" "$prev_idr_price" "IDR" "$prev_timestamp")
+    echo -e "IDR: ${WHITE}IDR$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "IDR") ${BRIGHT_CYAN}($IDR_PROVIDER)${NC} $delta_idr"
 
    else
     echo -e "${RED}❌ Price APIs currently unavailable${NC}"
@@ -1005,7 +1034,7 @@ echo
 write_current_prices
 
 # ATH Section (separate)
-echo -e "${BOLD}${PURPLE}📊 ALL-TIME HIGH (ATH)${NC}"
+echo -e "${SECTION}📊 ALL-TIME HIGH (ATH)${NC}"
 echo -e "${HINT}   📖 ATH = the highest price Bitcoin has EVER reached. Like a world record.${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 # Get ATH data with bulletproof system
@@ -1063,14 +1092,14 @@ if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . > /dev/null 2>&1; then
     show_ath_line "KRW: " "₩$(printf "%'15.0f" "$krw_ath")" "$krw_ath_date"
     show_ath_line "IDR: " "IDR$(printf "%'13.0f" "$idr_ath")" "$idr_ath_date"
     
-    echo -e "${CYAN}📡 ATH Source: $ath_source${NC}"
+    echo -e "${BRIGHT_CYAN}📡 ATH Source: $ath_source${NC}"
 else
     echo -e "${RED}❌ ATH data unavailable${NC}"
 fi
 echo
 
 # Supply Section (optimized, no external script call)
-echo -e "${BOLD}${BLUE}⚡ SUPPLY INFO${NC}"
+echo -e "${SECTION}⚡ SUPPLY INFO${NC}"
 echo -e "${HINT}   📖 Only 21 million BTC will ever exist. Like gold — scarce by design.${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
@@ -1112,7 +1141,7 @@ fi
 echo
 
 # Network Hashrate & Difficulty Section
-echo -e "${BOLD}${PURPLE}⛏  NETWORK & NODE STATS${NC}"
+echo -e "${SECTION}⛏  NETWORK & NODE STATS${NC}"
 echo -e "${HINT}   📖 How powerful the Bitcoin network is, and how your node is doing.${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
@@ -1127,7 +1156,7 @@ if [[ -n "$mining_info" ]] && echo "$mining_info" | jq -e '.difficulty' >/dev/nu
     # Format hashrate to EH/s (exahashes) — use printf for clean decimals
     hashrate_eh=$(printf "%.2f" "$(echo "scale=4; $hashrate_raw / 1000000000000000000" | bc 2>/dev/null)" 2>/dev/null)
     # Format difficulty to T (trillions)
-    difficulty_t=$(echo "scale=2; $difficulty / 1000000000000" | bc 2>/dev/null)
+    difficulty_t=$(printf "%.2f" "$(echo "scale=3; $difficulty / 1000000000000" | bc 2>/dev/null)" 2>/dev/null)
 
     echo -e "Hashrate:   ${WHITE}${hashrate_eh} EH/s${NC}  ${HINT}← total computing power securing Bitcoin. Like all the world's locks combined${NC}"
     echo -e "Difficulty: ${WHITE}${difficulty_t} T${NC}  ${HINT}← how hard the math puzzle is. Higher = harder to mine${NC}"
@@ -1149,13 +1178,23 @@ if [[ -n "$node_uptime" && "$node_uptime" =~ ^[0-9]+$ ]]; then
     echo -e "Node Uptime: ${GREEN}${uptime_days}d ${uptime_hours}h ${uptime_mins}m${NC}"
 fi
 
+# CPU & RAM usage of the Bitcoin node container
+docker_stats=$(docker stats bitcoin-node --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}' 2>/dev/null)
+if [[ -n "$docker_stats" ]]; then
+    cpu_pct=$(echo "$docker_stats" | cut -d'|' -f1)
+    mem_usage=$(echo "$docker_stats" | cut -d'|' -f2)
+    mem_pct=$(echo "$docker_stats" | cut -d'|' -f3)
+    echo -e "CPU Usage:  ${WHITE}${cpu_pct}${NC}  ${HINT}← how much of your Mac's CPU the node uses${NC}"
+    echo -e "RAM Usage:  ${WHITE}${mem_usage}${NC} (${WHITE}${mem_pct}${NC})  ${HINT}← memory consumed vs 4GB limit${NC}"
+fi
+
 # Bandwidth usage
 if [[ -n "$net_totals" ]] && echo "$net_totals" | jq -e '.totalbytesrecv' >/dev/null 2>&1; then
     recv_bytes=$(echo "$net_totals" | jq -r '.totalbytesrecv')
     sent_bytes=$(echo "$net_totals" | jq -r '.totalbytessent')
-    recv_gb=$(echo "scale=2; $recv_bytes / 1073741824" | bc 2>/dev/null)
-    sent_mb=$(echo "scale=1; $sent_bytes / 1048576" | bc 2>/dev/null)
-    echo -e "Bandwidth:  ${CYAN}▼${NC} ${WHITE}${recv_gb} GB${NC} recv | ${CYAN}▲${NC} ${WHITE}${sent_mb} MB${NC} sent"
+    recv_gb=$(printf "%.2f" "$(echo "scale=3; $recv_bytes / 1073741824" | bc 2>/dev/null)" 2>/dev/null)
+    sent_mb=$(printf "%.1f" "$(echo "scale=2; $sent_bytes / 1048576" | bc 2>/dev/null)" 2>/dev/null)
+    echo -e "Bandwidth:  ${BRIGHT_CYAN}▼${NC} ${WHITE}${recv_gb} GB${NC} recv | ${BRIGHT_CYAN}▲${NC} ${WHITE}${sent_mb} MB${NC} sent"
 fi
 
 # Disk Usage for Pruned Mode
@@ -1166,9 +1205,9 @@ if [[ -d "$bitcoin_data_dir" ]]; then
     total_data_size=$(du -sm "$bitcoin_data_dir" 2>/dev/null | awk '{print $1}')
     prune_limit_mb=10000
 
-    blocks_gb=$(echo "scale=1; ${blocks_size:-0} / 1024" | bc 2>/dev/null)
+    blocks_gb=$(printf "%.1f" "$(echo "scale=2; ${blocks_size:-0} / 1024" | bc 2>/dev/null)" 2>/dev/null)
     chainstate_mb=${chainstate_size:-0}
-    total_gb=$(echo "scale=1; ${total_data_size:-0} / 1024" | bc 2>/dev/null)
+    total_gb=$(printf "%.1f" "$(echo "scale=2; ${total_data_size:-0} / 1024" | bc 2>/dev/null)" 2>/dev/null)
     prune_pct=$(echo "scale=0; ${blocks_size:-0} * 100 / $prune_limit_mb" | bc 2>/dev/null)
 
     # Color based on how close to prune limit
