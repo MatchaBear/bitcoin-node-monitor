@@ -1,0 +1,60 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
+RPC_PASS=${BTC_RPC_PASS:-""}
+
+# Alert thresholds
+MIN_PEERS=3
+MAX_BLOCKS_BEHIND=1000
+CHECK_INTERVAL=300  # 5 minutes
+
+# Function to send notification (modify this to use your preferred notification method)
+send_notification() {
+    local message="$1"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $message" >> ~/bitcoin/alerts.log
+    echo "$message"
+}
+
+# Monitor function
+monitor_node() {
+    while true; do
+        # Check if node is responding
+        if ! docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockchaininfo > /dev/null 2>&1; then
+            send_notification "🚨 CRITICAL: Bitcoin node is not responding!"
+        else
+            # Check peer connections
+            peers=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getconnectioncount 2>/dev/null)
+            if [ "$peers" -lt $MIN_PEERS ]; then
+                send_notification "⚠️  WARNING: Low peer count ($peers connections)"
+            fi
+
+            # Check sync status
+            sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockchaininfo 2>/dev/null)
+            headers=$(echo "$sync_info" | grep '"headers"' | grep -o '[0-9]*')
+            blocks=$(echo "$sync_info" | grep '"blocks"' | grep -o '[0-9]*')
+            behind=$((headers - blocks))
+            if [ $behind -gt $MAX_BLOCKS_BEHIND ]; then
+                send_notification "⚠️  WARNING: Node is $behind blocks behind"
+            fi
+
+            # Check disk space
+            space=$(df -h $SCRIPT_DIR/data | awk 'NR==2 {print $5}' | sed 's/%//')
+            if [ "$space" -gt 90 ]; then
+                send_notification "⚠️  WARNING: Low disk space (${space}% used)"
+            fi
+        fi
+
+        sleep $CHECK_INTERVAL
+    done
+}
+
+# Start monitoring
+echo "Starting Bitcoin node monitoring (checking every 5 minutes)"
+echo "Alerts will be logged to ~/bitcoin/alerts.log"
+monitor_node

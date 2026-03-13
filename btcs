@@ -1,0 +1,707 @@
+#!/bin/bash
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
+RPC_PASS=${BTC_RPC_PASS:-""}
+
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Country flag mapping function
+get_country_flag() {
+    local country_code="$1"
+    case "$country_code" in
+        "US") echo "🇺🇸" ;;
+        "CA") echo "🇨🇦" ;;
+        "GB") echo "🇬🇧" ;;
+        "DE") echo "🇩🇪" ;;
+        "FR") echo "🇫🇷" ;;
+        "NL") echo "🇳🇱" ;;
+        "SE") echo "🇸🇪" ;;
+        "CH") echo "🇨🇭" ;;
+        "AT") echo "🇦🇹" ;;
+        "FI") echo "🇫🇮" ;;
+        "NO") echo "🇳🇴" ;;
+        "DK") echo "🇩🇰" ;;
+        "IE") echo "🇮🇪" ;;
+        "BE") echo "🇧🇪" ;;
+        "IT") echo "🇮🇹" ;;
+        "ES") echo "🇪🇸" ;;
+        "PT") echo "🇵🇹" ;;
+        "RU") echo "🇷🇺" ;;
+        "CN") echo "🇨🇳" ;;
+        "JP") echo "🇯🇵" ;;
+        "KR") echo "🇰🇷" ;;
+        "SG") echo "🇸🇬" ;;
+        "HK") echo "🇭🇰" ;;
+        "TW") echo "🇹🇼" ;;
+        "AU") echo "🇦🇺" ;;
+        "NZ") echo "🇳🇿" ;;
+        "IN") echo "🇮🇳" ;;
+        "TH") echo "🇹🇭" ;;
+        "MY") echo "🇲🇾" ;;
+        "ID") echo "🇮🇩" ;;
+        "PH") echo "🇵🇭" ;;
+        "VN") echo "🇻🇳" ;;
+        "BR") echo "🇧🇷" ;;
+        "AR") echo "🇦🇷" ;;
+        "MX") echo "🇲🇽" ;;
+        "CL") echo "🇨🇱" ;;
+        "CO") echo "🇨🇴" ;;
+        "ZA") echo "🇿🇦" ;;
+        "EG") echo "🇪🇬" ;;
+        "IL") echo "🇮🇱" ;;
+        "TR") echo "🇹🇷" ;;
+        "UA") echo "🇺🇦" ;;
+        "PL") echo "🇵🇱" ;;
+        "CZ") echo "🇨🇿" ;;
+        "HU") echo "🇭🇺" ;;
+        "RO") echo "🇷🇴" ;;
+        "BG") echo "🇧🇬" ;;
+        "HR") echo "🇭🇷" ;;
+        "RS") echo "🇷🇸" ;;
+        "SK") echo "🇸🇰" ;;
+        "SI") echo "🇸🇮" ;;
+        "LT") echo "🇱🇹" ;;
+        "LV") echo "🇱🇻" ;;
+        "EE") echo "🇪🇪" ;;
+        "IS") echo "🇮🇸" ;;
+        "LU") echo "🇱🇺" ;;
+        "MT") echo "🇲🇹" ;;
+        "CY") echo "🇨🇾" ;;
+        *) echo "🏳️" ;;
+    esac
+}
+
+# Get country info from IP address
+get_country_info() {
+    local ip="$1"
+    local result=$(curl -s --connect-timeout 3 --max-time 5 "https://ipinfo.io/$ip/country" 2>/dev/null)
+    if [[ ! -z "$result" ]] && [[ ${#result} -eq 2 ]]; then
+        echo "$result"
+    else
+        # Fallback to ip-api.com
+        local result2=$(curl -s --connect-timeout 3 --max-time 5 "http://ip-api.com/json/$ip?fields=countryCode" 2>/dev/null)
+        if [[ ! -z "$result2" ]] && echo "$result2" | jq . > /dev/null 2>&1; then
+            echo "$result2" | jq -r '.countryCode // ""'
+        else
+            echo ""
+        fi
+    fi
+}
+
+# Get country name from country code
+get_country_name() {
+    local country_code="$1"
+    case "$country_code" in
+        "US") echo "United States" ;;
+        "CA") echo "Canada" ;;
+        "GB") echo "United Kingdom" ;;
+        "DE") echo "Germany" ;;
+        "FR") echo "France" ;;
+        "NL") echo "Netherlands" ;;
+        "SE") echo "Sweden" ;;
+        "CH") echo "Switzerland" ;;
+        "AT") echo "Austria" ;;
+        "FI") echo "Finland" ;;
+        "NO") echo "Norway" ;;
+        "DK") echo "Denmark" ;;
+        "IE") echo "Ireland" ;;
+        "BE") echo "Belgium" ;;
+        "IT") echo "Italy" ;;
+        "ES") echo "Spain" ;;
+        "PT") echo "Portugal" ;;
+        "RU") echo "Russia" ;;
+        "CN") echo "China" ;;
+        "JP") echo "Japan" ;;
+        "KR") echo "South Korea" ;;
+        "SG") echo "Singapore" ;;
+        "HK") echo "Hong Kong" ;;
+        "TW") echo "Taiwan" ;;
+        "AU") echo "Australia" ;;
+        "NZ") echo "New Zealand" ;;
+        "IN") echo "India" ;;
+        "TH") echo "Thailand" ;;
+        "MY") echo "Malaysia" ;;
+        "ID") echo "Indonesia" ;;
+        "PH") echo "Philippines" ;;
+        "VN") echo "Vietnam" ;;
+        "BR") echo "Brazil" ;;
+        "AR") echo "Argentina" ;;
+        "MX") echo "Mexico" ;;
+        "CL") echo "Chile" ;;
+        "CO") echo "Colombia" ;;
+        "ZA") echo "South Africa" ;;
+        "EG") echo "Egypt" ;;
+        "IL") echo "Israel" ;;
+        "TR") echo "Turkey" ;;
+        "UA") echo "Ukraine" ;;
+        "PL") echo "Poland" ;;
+        "CZ") echo "Czech Republic" ;;
+        "HU") echo "Hungary" ;;
+        "RO") echo "Romania" ;;
+        "BG") echo "Bulgaria" ;;
+        "HR") echo "Croatia" ;;
+        "RS") echo "Serbia" ;;
+        "SK") echo "Slovakia" ;;
+        "SI") echo "Slovenia" ;;
+        "LT") echo "Lithuania" ;;
+        "LV") echo "Latvia" ;;
+        "EE") echo "Estonia" ;;
+        "IS") echo "Iceland" ;;
+        "LU") echo "Luxembourg" ;;
+        "MT") echo "Malta" ;;
+        "CY") echo "Cyprus" ;;
+        *) echo "Unknown" ;;
+    esac
+}
+
+# Quick Bitcoin Status Dashboard (One-shot version)
+echo -e "${BOLD}${CYAN}============================================${NC}"
+echo -e "${BOLD}${YELLOW}    🟠 Bitcoin Status Dashboard           ${NC}"
+echo -e "${BOLD}${CYAN}============================================${NC}"
+echo -e "${WHITE}📅 $(date '+%Y-%m-%d %H:%M:%S')${NC}"
+echo -e "${CYAN}============================================${NC}"
+echo
+
+# Get all data in one go for efficiency
+sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockchaininfo 2>/dev/null)
+network_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getnetworkinfo 2>/dev/null)
+mempool_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getmempoolinfo 2>/dev/null)
+
+# Node Status Section
+echo -e "${BOLD}${GREEN}🔧 NODE STATUS${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
+    headers=$(echo "$sync_info" | grep '"headers"' | grep -o '[0-9]*')
+    blocks=$(echo "$sync_info" | grep '"blocks"' | grep -o '[0-9]*')
+    connections=$(echo "$network_info" | grep '"connections"' | grep -o '[0-9]*')
+    mempool_size=$(echo "$mempool_info" | grep '"size"' | grep -o '[0-9]*')
+    mempool_bytes=$(echo "$mempool_info" | grep '"bytes"' | grep -o '[0-9]*')
+    
+    # Sync status with color
+    if [ "$blocks" -eq "$headers" ]; then
+        sync_status="${GREEN}✅ Fully Synced${NC}"
+    else
+        sync_percent=$(echo "scale=2; $blocks * 100 / $headers" | bc)
+        sync_status="${YELLOW}⚠️  Syncing ($sync_percent%)${NC}"
+    fi
+    
+    # Peer status with color
+    if [ "$connections" -ge 8 ]; then
+        peer_status="${GREEN}$connections${NC}"
+    elif [ "$connections" -ge 4 ]; then
+        peer_status="${YELLOW}$connections${NC}"
+    else
+        peer_status="${RED}$connections${NC}"
+    fi
+    
+    echo -e "Status: $sync_status"
+    echo -e "Height: ${WHITE}$(printf "%'d" $blocks)${NC} / ${WHITE}$(printf "%'d" $headers)${NC}"
+    echo -e "Peers: $peer_status"
+    echo -e "Mempool: ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1024/1024" | bc) MB)"
+    
+    # Show public IP first (VPN detection for network engineers!) 🕵️‍♂️
+    echo -e "${CYAN}🌐 Network Information:${NC}"
+
+    # Get public IP and ISP info using ipinfo.io and ipapi.co
+    get_ip_info() {
+        local IPINFO_TOKEN="${IPINFO_TOKEN:-}"
+        local ip_file="$SCRIPT_DIR/last_ip.txt"
+        local skip_ip_lookup=false
+        local source_used=""
+
+        public_ip=$(curl -s --connect-timeout 5 https://api.ipify.org)
+
+        if [[ -z "$public_ip" || ! "$public_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo -e "   ❌ Could not determine public IP — skip IP info"
+            return
+        fi
+
+        if [[ -f "$ip_file" ]]; then
+            prev_ip=$(cat "$ip_file")
+        else
+            prev_ip=""
+        fi
+
+        if [[ "$public_ip" == "$prev_ip" ]]; then
+            echo -e "   🔁 Public IP unchanged: $public_ip — skip ipinfo.io"
+            return
+        fi
+
+        echo "$public_ip" > "$ip_file"
+
+        ip_info=$(curl -s --connect-timeout 5 "https://ipinfo.io/$public_ip?token=$IPINFO_TOKEN")
+        isp=$(echo "$ip_info" | jq -r '.org // empty')
+        city=$(echo "$ip_info" | jq -r '.city // empty')
+        country=$(echo "$ip_info" | jq -r '.country // empty')
+        source_used="ipinfo.io"
+
+        if [[ -z "$isp" || "$isp" == "null" ]]; then
+            ip_info_alt=$(curl -s --connect-timeout 5 "https://ipapi.co/$public_ip/json/")
+            isp=$(echo "$ip_info_alt" | jq -r '.org // .org_name // "Unknown ISP"')
+            city=$(echo "$ip_info_alt" | jq -r '.city // "Unknown"')
+            country=$(echo "$ip_info_alt" | jq -r '.country // "Unknown"')
+            source_used="ipapi.co"
+        fi
+
+        isp=$(echo "$isp" | cut -c1-40)
+
+        if [[ "$isp" =~ VPN|Proxy|Virtual|Private ]]; then
+            vpn_warn="   ${YELLOW}🔒 VPN/Proxy detected!${NC}"
+        fi
+
+        echo -e "   🌐 Your Public IP: ${GREEN}${public_ip}${NC} (${CYAN}${isp:-Unknown}, ${city:-Unknown} ${country:-Unknown}${NC})"
+        echo -e "   🔎 Info source: ${source_used}"
+        [[ -n "$vpn_warn" ]] && echo -e "$vpn_warn"
+    }
+
+    # 🧠 Tambahkan ini agar fungsi benar-benar dijalankan
+    get_ip_info
+
+    # Show ALL peer IP addresses with country flags and names
+    echo -e "   ${CYAN}Connected Peers (all $connections):${NC}"
+    peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getpeerinfo 2>/dev/null | jq -r '.[].addr')
+    
+    if [ ! -z "$peer_ips" ]; then
+        echo "$peer_ips" | while read ip; do
+            if [ ! -z "$ip" ]; then
+                # Extract just IP without port for geolocation
+                clean_ip=$(echo "$ip" | cut -d':' -f1 | sed 's/\[//g' | sed 's/\]//g')
+                
+                # Get country info for this IP
+                country_code=$(get_country_info "$clean_ip")
+                if [[ ! -z "$country_code" ]]; then
+                    country_flag=$(get_country_flag "$country_code")
+                    country_name=$(get_country_name "$country_code")
+                    echo -e "     ${country_flag}  ${WHITE}$ip${NC} ${CYAN}($country_name)${NC}"
+                else
+                    echo -e "     🏳️ ${WHITE}$ip${NC} ${CYAN}(Unknown)${NC}"
+                fi
+            fi
+        done
+        
+        # Professional explanation
+        echo -e "     ${CYAN}💡 Total: $connections peers (inbound+outbound connections to global Bitcoin network)${NC}"
+    else
+        echo -e "     ${YELLOW}No peer data available${NC}"
+    fi
+else
+    echo -e "${RED}❌ Node connection failed${NC}"
+fi
+echo
+
+# Price Section
+echo -e "${BOLD}${PURPLE}💰 MARKET DATA ${CYAN}(Multi-Provider APIs)${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+# Get current price data with proper timezone handling and dates
+api_time=$(TZ='UTC' date '+%Y-%m-%d %H:%M:%S')
+sg_time=$(TZ='Asia/Singapore' date '+%Y-%m-%d %H:%M:%S')
+jkt_time=$(TZ='Asia/Jakarta' date '+%Y-%m-%d %H:%M:%S')
+echo -e "${CYAN}📡 Last fetched: $api_time UTC${NC}"
+echo -e "${CYAN}   Singapore: $sg_time SGT | Jakarta: $jkt_time WIB${NC}"
+
+# Global provider tracking
+USD_PROVIDER=""
+EUR_PROVIDER=""
+GBP_PROVIDER=""
+SGD_PROVIDER=""
+CHF_PROVIDER=""
+JPY_PROVIDER=""
+KRW_PROVIDER=""
+IDR_PROVIDER=""
+
+# Bulletproof multi-provider API system - NEVER fails!
+fetch_bulletproof_price() {
+    local currency="$1"
+    local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
+    local currency_upper=$(echo "$currency" | tr '[:lower:]' '[:upper:]')
+    
+    # Provider 1: CryptoCompare with 24h change data (prioritized for ALL currencies including USD)
+    local cryptocompare_url="https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=$currency_upper"
+    local result=$(curl -s --connect-timeout 5 --max-time 10 "$cryptocompare_url" 2>/dev/null)
+    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"CHANGEPCT24HOUR"* ]]; then
+        local price=$(echo "$result" | jq -r ".RAW.BTC.$currency_upper.PRICE // 0")
+        local change=$(echo "$result" | jq -r ".RAW.BTC.$currency_upper.CHANGEPCT24HOUR // 0")
+        if [[ "$price" != "0" ]]; then
+            # Set provider variable globally
+            eval "${currency_upper}_PROVIDER=CryptoCompare"
+            echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":$change,\"provider\":\"CryptoCompare\"}}"
+            return 0
+        fi
+    fi
+    
+    # Provider 2: Binance (for USD only, no 24h change but faster)
+    if [[ "$currency_lower" == "usd" ]]; then
+        local binance_url="https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT"
+        result=$(curl -s --connect-timeout 5 --max-time 10 "$binance_url" 2>/dev/null)
+        if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"priceChangePercent"* ]]; then
+            local price=$(echo "$result" | jq -r '.lastPrice // 0')
+            local change=$(echo "$result" | jq -r '.priceChangePercent // 0')
+            if [[ "$price" != "0" ]]; then
+                eval "USD_PROVIDER=Binance_24hr"
+                echo "{\"bitcoin\":{\"usd\":$price,\"usd_24h_change\":$change,\"provider\":\"Binance 24hr\"}}"
+                return 0
+            fi
+        fi
+    fi
+    
+    # Provider 3: CryptoCompare simple price (fallback)
+    cryptocompare_url="https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=$currency_upper"
+    result=$(curl -s --connect-timeout 5 --max-time 10 "$cryptocompare_url" 2>/dev/null)
+    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"$currency_upper"* ]]; then
+        local price=$(echo "$result" | jq -r ".$currency_upper // 0")
+        if [[ "$price" != "0" ]]; then
+            eval "${currency_upper}_PROVIDER=CryptoCompare_Basic"
+            echo "{\"bitcoin\":{\"$currency_lower\":$price,\"${currency_lower}_24h_change\":0,\"provider\":\"CryptoCompare Basic\"}}"
+            return 0
+        fi
+    fi
+    
+    # Provider 4: CoinGecko (last resort due to rate limiting)
+    local coingecko_url="https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${currency_lower}&include_24h_change=true"
+    result=$(curl -s --connect-timeout 5 --max-time 10 "$coingecko_url" 2>/dev/null)
+    if [[ ! -z "$result" ]] && echo "$result" | jq . >/dev/null 2>&1 && [[ "$result" == *"bitcoin"* ]] && [[ "$result" != *"error_code"* ]]; then
+        eval "${currency_upper}_PROVIDER=CoinGecko"
+        # Add provider info to the result
+        result_with_provider=$(echo "$result" | jq '.bitcoin.provider = "CoinGecko"')
+        echo "$result_with_provider"
+        return 0
+    fi
+    
+    # Provider 5: Fallback with recent approximate values (updated regularly)
+    eval "${currency_upper}_PROVIDER=Fallback_Cache"
+    case "$currency_lower" in
+        "usd") echo '{"bitcoin":{"usd":105000,"usd_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "eur") echo '{"bitcoin":{"eur":92500,"eur_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "gbp") echo '{"bitcoin":{"gbp":78000,"gbp_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "sgd") echo '{"bitcoin":{"sgd":135700,"sgd_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "chf") echo '{"bitcoin":{"chf":86200,"chf_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "jpy") echo '{"bitcoin":{"jpy":15130000,"jpy_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "krw") echo '{"bitcoin":{"krw":145250000,"krw_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        "idr") echo '{"bitcoin":{"idr":1719000000,"idr_24h_change":0,"provider":"Fallback Cache"}}' ;;
+        *) echo '{"bitcoin":{"'$currency_lower'":0,"'${currency_lower}'_24h_change":0,"provider":"Fallback Cache"}}' ;;
+    esac
+    return 0
+}
+
+# ATH data with multiple providers - Enhanced with real-time data
+fetch_bulletproof_ath() {
+    local ath_data='{"market_data":{"ath":{}}}'
+    local provider_used="None"
+    
+    # Step 1: Try CoinGecko for comprehensive ATH data
+    local coingecko_result=$(curl -s --connect-timeout 5 --max-time 10 "https://api.coingecko.com/api/v3/coins/bitcoin?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false&sparkline=false" 2>/dev/null)
+    if [[ ! -z "$coingecko_result" ]] && echo "$coingecko_result" | jq . > /dev/null 2>&1 && [[ "$coingecko_result" == *"market_data"* ]] && [[ "$coingecko_result" != *"error_code"* ]]; then
+        ath_data="$coingecko_result"
+        provider_used="CoinGecko"
+    fi
+    
+    # Step 2: Get current 24h highs from multiple exchanges for comparison
+    local binance_24h_high=0
+    local binance_result=$(curl -s --connect-timeout 5 --max-time 10 "https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT" 2>/dev/null)
+    if [[ ! -z "$binance_result" ]] && echo "$binance_result" | jq . > /dev/null 2>&1 && [[ "$binance_result" == *"highPrice"* ]]; then
+        binance_24h_high=$(echo "$binance_result" | jq -r '.highPrice // 0')
+    fi
+    
+    # Step 3: Get CryptoCompare 24h high as secondary source
+    local cryptocompare_24h_high=0
+    local cryptocompare_result=$(curl -s --connect-timeout 5 --max-time 10 "https://min-api.cryptocompare.com/data/pricemultifull?fsyms=BTC&tsyms=USD" 2>/dev/null)
+    if [[ ! -z "$cryptocompare_result" ]] && echo "$cryptocompare_result" | jq . > /dev/null 2>&1 && [[ "$cryptocompare_result" == *"HIGH24HOUR"* ]]; then
+        cryptocompare_24h_high=$(echo "$cryptocompare_result" | jq -r '.RAW.BTC.USD.HIGH24HOUR // 0')
+    fi
+    
+    # Step 4: Compare with recorded ATH and update if higher
+    if [[ "$ath_data" != '{"market_data":{"ath":{}}}' ]]; then
+        local recorded_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd // 0')
+        
+        # Find the highest value among all sources
+        local highest_value=$recorded_ath
+        local highest_source="$provider_used"
+        
+        if (( $(echo "$binance_24h_high > $highest_value" | bc -l 2>/dev/null || echo 0) )); then
+            highest_value=$binance_24h_high
+            highest_source="Binance_24h"
+        fi
+        
+        if (( $(echo "$cryptocompare_24h_high > $highest_value" | bc -l 2>/dev/null || echo 0) )); then
+            highest_value=$cryptocompare_24h_high
+            highest_source="CryptoCompare_24h"
+        fi
+        
+        # If we found a higher value, update the ATH data
+        if (( $(echo "$highest_value > $recorded_ath" | bc -l 2>/dev/null || echo 0) )); then
+            # Update USD ATH with the new high
+            ath_data=$(echo "$ath_data" | jq ".market_data.ath.usd = $highest_value | .market_data.ath_source = \"$highest_source\" | .market_data.ath_updated = true")
+            
+            # Estimate other currencies based on current rates (rough approximation)
+            local usd_to_eur_rate=0.85
+            local usd_to_gbp_rate=0.75
+            local usd_to_sgd_rate=1.35
+            local usd_to_chf_rate=0.88
+            local usd_to_jpy_rate=150
+            local usd_to_krw_rate=1300
+            local usd_to_idr_rate=15800
+            
+            ath_data=$(echo "$ath_data" | jq ".market_data.ath.eur = ($highest_value * $usd_to_eur_rate | floor) | .market_data.ath.gbp = ($highest_value * $usd_to_gbp_rate | floor) | .market_data.ath.sgd = ($highest_value * $usd_to_sgd_rate | floor) | .market_data.ath.chf = ($highest_value * $usd_to_chf_rate | floor) | .market_data.ath.jpy = ($highest_value * $usd_to_jpy_rate | floor) | .market_data.ath.krw = ($highest_value * $usd_to_krw_rate | floor) | .market_data.ath.idr = ($highest_value * $usd_to_idr_rate | floor)")
+        fi
+    else
+        # If CoinGecko failed, use fallback with updated values
+        local fallback_usd_ath=111814
+        if (( $(echo "$binance_24h_high > $fallback_usd_ath" | bc -l 2>/dev/null || echo 0) )); then
+            fallback_usd_ath=$binance_24h_high
+            provider_used="Binance_24h_Fallback"
+        elif (( $(echo "$cryptocompare_24h_high > $fallback_usd_ath" | bc -l 2>/dev/null || echo 0) )); then
+            fallback_usd_ath=$cryptocompare_24h_high
+            provider_used="CryptoCompare_24h_Fallback"
+        else
+            provider_used="Static_Fallback"
+        fi
+        
+        ath_data=$(cat <<EOF
+{
+  "market_data": {
+    "ath": {
+      "usd": $fallback_usd_ath,
+      "eur": $(echo "$fallback_usd_ath * 0.85" | bc | cut -d. -f1),
+      "gbp": $(echo "$fallback_usd_ath * 0.75" | bc | cut -d. -f1),
+      "sgd": $(echo "$fallback_usd_ath * 1.35" | bc | cut -d. -f1),
+      "chf": $(echo "$fallback_usd_ath * 0.88" | bc | cut -d. -f1),
+      "jpy": $(echo "$fallback_usd_ath * 150" | bc | cut -d. -f1),
+      "krw": $(echo "$fallback_usd_ath * 1300" | bc | cut -d. -f1),
+      "idr": $(echo "$fallback_usd_ath * 15800" | bc | cut -d. -f1)
+    },
+    "ath_source": "$provider_used"
+  }
+}
+EOF
+        )
+    fi
+    
+    echo "$ath_data"
+    return 0
+}
+
+# Fetch bulletproof multi-currency data - NEVER fails!
+echo -e "${CYAN}Fetching live market data...${NC}"
+
+# Get individual currency data from multiple providers
+usd_data=$(fetch_bulletproof_price "USD")
+eur_data=$(fetch_bulletproof_price "EUR")
+gbp_data=$(fetch_bulletproof_price "GBP")
+sgd_data=$(fetch_bulletproof_price "SGD")
+chf_data=$(fetch_bulletproof_price "CHF")
+jpy_data=$(fetch_bulletproof_price "JPY")
+krw_data=$(fetch_bulletproof_price "KRW")
+idr_data=$(fetch_bulletproof_price "IDR")
+
+# Process sophisticated multi-currency data with individual changes
+process_currency_data() {
+    local data="$1"
+    local currency="$2"
+    
+    if [[ "$data" != "API_FAILED" ]] && echo "$data" | jq . >/dev/null 2>&1; then
+        local currency_lower=$(echo "$currency" | tr '[:upper:]' '[:lower:]')
+        local price=$(echo "$data" | jq -r ".bitcoin.$currency_lower // 0" 2>/dev/null)
+        local change=$(echo "$data" | jq -r ".bitcoin.${currency_lower}_24h_change // 0" 2>/dev/null)
+        local provider=$(echo "$data" | jq -r ".bitcoin.provider // \"Unknown\"" 2>/dev/null)
+        
+        # Calculate raw change
+        if [[ "$price" != "0" && "$change" != "0" && "$change" != "null" ]]; then
+            local raw_change=$(echo "scale=2; $price * $change / 100" | bc 2>/dev/null || echo "0")
+            echo "$price|$change|$raw_change|$provider"
+        else
+            echo "$price|0|0|$provider"
+        fi
+    else
+        echo "0|0|0"
+    fi
+}
+
+# Process all currencies with their individual data
+IFS='|' read usd_price usd_change_pct usd_change_raw USD_PROVIDER <<< "$(process_currency_data "$usd_data" "USD")"
+IFS='|' read eur_price eur_change_pct eur_change_raw EUR_PROVIDER <<< "$(process_currency_data "$eur_data" "EUR")"
+IFS='|' read gbp_price gbp_change_pct gbp_change_raw GBP_PROVIDER <<< "$(process_currency_data "$gbp_data" "GBP")"
+IFS='|' read sgd_price sgd_change_pct sgd_change_raw SGD_PROVIDER <<< "$(process_currency_data "$sgd_data" "SGD")"
+IFS='|' read chf_price chf_change_pct chf_change_raw CHF_PROVIDER <<< "$(process_currency_data "$chf_data" "CHF")"
+IFS='|' read jpy_price jpy_change_pct jpy_change_raw JPY_PROVIDER <<< "$(process_currency_data "$jpy_data" "JPY")"
+IFS='|' read krw_price krw_change_pct krw_change_raw KRW_PROVIDER <<< "$(process_currency_data "$krw_data" "KRW")"
+IFS='|' read idr_price idr_change_pct idr_change_raw IDR_PROVIDER <<< "$(process_currency_data "$idr_data" "IDR")"
+
+# Check if we have valid data
+api_success=false
+if [[ "$usd_price" != "0" || "$eur_price" != "0" || "$gbp_price" != "0" ]]; then
+    api_success=true
+fi
+
+if [[ "$api_success" == "true" ]]; then
+    
+    # Function to format change for any currency with both percentage and raw values
+    format_change() {
+    local change_pct="$1"
+    local change_raw="$2"
+    local currency_symbol="$3"
+    local change_abs
+    local change_color
+    local change_symbol
+    local change_text
+    local raw_abs
+    local raw_sign
+    local raw_formatted
+    local pct_formatted
+
+    # Handle null or empty values
+    if [[ "$change_pct" == "null" || "$change_pct" == "" ]]; then
+        change_pct="0"
+    fi
+    if [[ "$change_raw" == "null" || "$change_raw" == "" ]]; then
+        change_raw="0"
+    fi
+
+    # Calculate absolute value for % and raw
+    change_abs=$(echo "$change_pct" | sed 's/-//' | bc 2>/dev/null || echo "0")
+    raw_abs=$(echo "$change_raw" | sed 's/-//' | bc 2>/dev/null || echo "0")
+
+    # Determine color and symbol for %
+    if (( $(echo "$change_pct > 0" | bc -l 2>/dev/null || echo 0) )); then
+        change_color=$GREEN
+        change_symbol="▲"
+    elif (( $(echo "$change_pct < 0" | bc -l 2>/dev/null || echo 0) )); then
+        change_color=$RED
+        change_symbol="▼"
+    else
+        change_color=$YELLOW
+        change_symbol="═"
+    fi
+
+    # Format percentage
+    if (( $(echo "$change_abs > 0.01" | bc 2>/dev/null || echo 0) )); then
+        pct_formatted=$(printf "%.2f" "$change_pct" 2>/dev/null || echo "0.00")
+    else
+        pct_formatted=$(printf "%.3f" "$change_pct" 2>/dev/null || echo "0.000")
+    fi
+
+    # Format raw value with proper thousand separator
+    if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "IDR" ]]; then
+        raw_formatted=$(printf "%'.0f" "$raw_abs" 2>/dev/null || echo "0")
+    else
+        raw_formatted=$(printf "%'.2f" "$raw_abs" 2>/dev/null || echo "0.00")
+    fi
+
+    echo "${change_color}$change_symbol $pct_formatted% ($currency_symbol$raw_formatted)${NC}"
+}
+    
+    # Display all currencies with consistent formatting and provider info
+    echo -e "USD: ${WHITE}\$$(printf "%'15.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${CYAN}($USD_PROVIDER)${NC}"
+    echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${CYAN}($EUR_PROVIDER)${NC}"
+    echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${CYAN}($GBP_PROVIDER)${NC}"
+    echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${CYAN}($SGD_PROVIDER)${NC}"
+    echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${CYAN}($CHF_PROVIDER)${NC}"
+    echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${CYAN}($JPY_PROVIDER)${NC}"
+    echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${CYAN}($KRW_PROVIDER)${NC}"
+    echo -e "IDR: ${WHITE}IDR$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.") ${CYAN}($IDR_PROVIDER)${NC}"
+else
+    echo -e "${RED}❌ Price APIs currently unavailable${NC}"
+    echo -e "${YELLOW}💡 This may be due to rate limiting or network issues${NC}"
+fi
+echo
+# ATH Section (separate)
+echo -e "${BOLD}${PURPLE}📊 ALL-TIME HIGH (ATH)${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+# Get ATH data with bulletproof system
+ath_data=$(fetch_bulletproof_ath)
+if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . > /dev/null 2>&1; then
+    usd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.usd // 73817')
+    eur_ath=$(echo "$ath_data" | jq -r '.market_data.ath.eur // 68000')
+    gbp_ath=$(echo "$ath_data" | jq -r '.market_data.ath.gbp // 58000')
+    sgd_ath=$(echo "$ath_data" | jq -r '.market_data.ath.sgd // 98564')
+    chf_ath=$(echo "$ath_data" | jq -r '.market_data.ath.chf // 68000')
+    jpy_ath=$(echo "$ath_data" | jq -r '.market_data.ath.jpy // 11500000')
+    krw_ath=$(echo "$ath_data" | jq -r '.market_data.ath.krw // 150000000')
+    idr_ath=$(echo "$ath_data" | jq -r '.market_data.ath.idr // 1143000000')
+    
+    # Check if ATH was updated and get source
+    ath_updated=$(echo "$ath_data" | jq -r '.market_data.ath_updated // false')
+    ath_source=$(echo "$ath_data" | jq -r '.market_data.ath_source // "CoinGecko"')
+    
+    # Display ATH values with update indicator
+    ath_indicator=""
+    if [[ "$ath_updated" == "true" ]]; then
+        ath_indicator="${GREEN}🔥 NEW ATH! ${NC}"
+    fi
+    
+    echo -e "USD: ${YELLOW}\$$(printf "%'15.2f" "$usd_ath")${NC} $ath_indicator"
+    echo -e "EUR: ${YELLOW}€$(printf "%'15.2f" "$eur_ath")${NC}"
+    echo -e "GBP: ${YELLOW}£$(printf "%'15.2f" "$gbp_ath")${NC}"
+    echo -e "SGD: ${YELLOW}S\$$(printf "%'14.2f" "$sgd_ath")${NC}"
+    echo -e "CHF: ${YELLOW}CHF$(printf "%'13.2f" "$chf_ath")${NC}"
+    echo -e "JPY: ${YELLOW}¥$(printf "%'15.0f" "$jpy_ath")${NC}"
+    echo -e "KRW: ${YELLOW}₩$(printf "%'15.0f" "$krw_ath")${NC}"
+    echo -e "IDR: ${YELLOW}IDR$(printf "%'13.0f" "$idr_ath")${NC}"
+    echo -e "${CYAN}📡 ATH Source: $ath_source${NC}"
+else
+    echo -e "${RED}❌ ATH data unavailable${NC}"
+fi
+echo
+
+# Supply Section (optimized, no external script call)
+echo -e "${BOLD}${BLUE}⚡ SUPPLY INFO${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+if [ ! -z "$blocks" ]; then
+    # Calculate supply efficiently
+    current_height=$blocks
+    max_supply=21000000
+    halving_interval=210000
+    current_era=$((current_height / halving_interval))
+    current_reward=$(echo "scale=8; 50 / (2 ^ $current_era)" | bc)
+    
+    # Simple supply calculation
+    total_supply=0
+    temp_height=$current_height
+    reward=50
+    
+    for ((i=0; i<$current_era; i++)); do
+        total_supply=$(echo "$total_supply + ($halving_interval * $reward)" | bc)
+        reward=$(echo "scale=8; $reward / 2" | bc)
+        temp_height=$((temp_height - halving_interval))
+    done
+    
+    total_supply=$(echo "$total_supply + ($temp_height * $reward)" | bc)
+    remaining=$(echo "$max_supply - $total_supply" | bc)
+    percent_mined=$(echo "scale=6; $total_supply * 100 / $max_supply" | bc)
+    
+    # Next halving
+    next_halving=$(( ((current_height/halving_interval)+1)*halving_interval ))
+    blocks_to_halving=$((next_halving - current_height))
+    days_to_halving=$((blocks_to_halving * 10 / 1440))
+    
+    echo -e "Current Supply: ${WHITE}$(printf "%'.0f" "$total_supply")${NC} BTC (${percent_mined}%)"
+    echo -e "Remaining: ${WHITE}$(printf "%'.0f" "$remaining")${NC} BTC"
+    echo -e "Block Reward: ${WHITE}$current_reward${NC} BTC"
+    echo -e "Next Halving: ${YELLOW}$(printf "%'d" $blocks_to_halving)${NC} blocks (~$(printf "%'d" $days_to_halving) days)"
+else
+    echo -e "${RED}❌ Supply data unavailable${NC}"
+fi
+echo
+
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${WHITE}💡 Use ${BOLD}btcm${NC}${WHITE} for continuous monitoring${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+

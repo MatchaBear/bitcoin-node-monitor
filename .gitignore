@@ -1,0 +1,55 @@
+# Credentials & secrets
+.env
+credentials.txt
+*.key
+*.pem
+*.cert
+
+# Bitcoin node data (20GB+)
+data/
+blocks/
+chainstate/
+databases/
+indexes/
+wallets/
+
+# Runtime cache files (change every refresh)
+btc_last_prices.txt
+last_ip.txt
+peer_country_cache.txt
+cache/
+
+# Config with secrets
+config/bitcoin.conf
+
+# Backup scripts (not needed in repo)
+*.bak
+*-backup-*.sh
+*-backup-*
+btc-monitor-stable-*
+btc-monitor-best-*
+btc-monitor-simple.sh
+btc-monitor-professional.sh
+btcs-stable-*
+
+# Logs and temp
+*.log
+*.tmp
+*.swp
+*.swo
+*.pid
+*.sock
+
+# macOS
+.DS_Store
+._*
+
+# IDE
+.idea/
+.vscode/
+*.sublime*
+*~
+
+# Docker runtime
+.docker/
+docker-data/

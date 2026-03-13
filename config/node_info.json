@@ -1,0 +1,242 @@
+{
+  "api_config": {
+    "country_api": "https://restcountries.com/v3.1",
+    "timeout": 5,
+    "max_retries": 3,
+    "cache_duration": 86400
+  },
+  "fallback_countries": {
+    "US": {
+      "flag": "🇺🇸",
+      "name": "United States"
+    },
+    "CA": {
+      "flag": "🇨🇦",
+      "name": "Canada"
+    },
+    "GB": {
+      "flag": "🇬🇧",
+      "name": "United Kingdom"
+    },
+    "DE": {
+      "flag": "🇩🇪",
+      "name": "Germany"
+    },
+    "FR": {
+      "flag": "🇫🇷",
+      "name": "France"
+    },
+    "NL": {
+      "flag": "🇳🇱",
+      "name": "Netherlands"
+    },
+    "SE": {
+      "flag": "🇸🇪",
+      "name": "Sweden"
+    },
+    "CH": {
+      "flag": "🇨🇭",
+      "name": "Switzerland"
+    },
+    "AT": {
+      "flag": "🇦🇹",
+      "name": "Austria"
+    },
+    "FI": {
+      "flag": "🇫🇮",
+      "name": "Finland"
+    },
+    "NO": {
+      "flag": "🇳🇴",
+      "name": "Norway"
+    },
+    "DK": {
+      "flag": "🇩🇰",
+      "name": "Denmark"
+    },
+    "IE": {
+      "flag": "🇮🇪",
+      "name": "Ireland"
+    },
+    "BE": {
+      "flag": "🇧🇪",
+      "name": "Belgium"
+    },
+    "IT": {
+      "flag": "🇮🇹",
+      "name": "Italy"
+    },
+    "ES": {
+      "flag": "🇪🇸",
+      "name": "Spain"
+    },
+    "PT": {
+      "flag": "🇵🇹",
+      "name": "Portugal"
+    },
+    "RU": {
+      "flag": "🇷🇺",
+      "name": "Russia"
+    },
+    "CN": {
+      "flag": "🇨🇳",
+      "name": "China"
+    },
+    "JP": {
+      "flag": "🇯🇵",
+      "name": "Japan"
+    },
+    "KR": {
+      "flag": "🇰🇷",
+      "name": "South Korea"
+    },
+    "SG": {
+      "flag": "🇸🇬",
+      "name": "Singapore"
+    },
+    "HK": {
+      "flag": "🇭🇰",
+      "name": "Hong Kong"
+    },
+    "TW": {
+      "flag": "🇹🇼",
+      "name": "Taiwan"
+    },
+    "AU": {
+      "flag": "🇦🇺",
+      "name": "Australia"
+    },
+    "NZ": {
+      "flag": "🇳🇿",
+      "name": "New Zealand"
+    },
+    "IN": {
+      "flag": "🇮🇳",
+      "name": "India"
+    },
+    "TH": {
+      "flag": "🇹🇭",
+      "name": "Thailand"
+    },
+    "MY": {
+      "flag": "🇲🇾",
+      "name": "Malaysia"
+    },
+    "ID": {
+      "flag": "🇮🇩",
+      "name": "Indonesia"
+    },
+    "PH": {
+      "flag": "🇵🇭",
+      "name": "Philippines"
+    },
+    "VN": {
+      "flag": "🇻🇳",
+      "name": "Vietnam"
+    },
+    "BR": {
+      "flag": "🇧🇷",
+      "name": "Brazil"
+    },
+    "AR": {
+      "flag": "🇦🇷",
+      "name": "Argentina"
+    },
+    "MX": {
+      "flag": "🇲🇽",
+      "name": "Mexico"
+    },
+    "CL": {
+      "flag": "🇨🇱",
+      "name": "Chile"
+    },
+    "CO": {
+      "flag": "🇨🇴",
+      "name": "Colombia"
+    },
+    "ZA": {
+      "flag": "🇿🇦",
+      "name": "South Africa"
+    },
+    "EG": {
+      "flag": "🇪🇬",
+      "name": "Egypt"
+    },
+    "IL": {
+      "flag": "🇮🇱",
+      "name": "Israel"
+    },
+    "TR": {
+      "flag": "🇹🇷",
+      "name": "Turkey"
+    },
+    "UA": {
+      "flag": "🇺🇦",
+      "name": "Ukraine"
+    },
+    "PL": {
+      "flag": "🇵🇱",
+      "name": "Poland"
+    },
+    "CZ": {
+      "flag": "🇨🇿",
+      "name": "Czech Republic"
+    },
+    "HU": {
+      "flag": "🇭🇺",
+      "name": "Hungary"
+    },
+    "RO": {
+      "flag": "🇷🇴",
+      "name": "Romania"
+    },
+    "BG": {
+      "flag": "🇧🇬",
+      "name": "Bulgaria"
+    },
+    "HR": {
+      "flag": "🇭🇷",
+      "name": "Croatia"
+    },
+    "RS": {
+      "flag": "🇷🇸",
+      "name": "Serbia"
+    },
+    "SK": {
+      "flag": "🇸🇰",
+      "name": "Slovakia"
+    },
+    "SI": {
+      "flag": "🇸🇮",
+      "name": "Slovenia"
+    },
+    "LT": {
+      "flag": "🇱🇹",
+      "name": "Lithuania"
+    },
+    "LV": {
+      "flag": "🇱🇻",
+      "name": "Latvia"
+    },
+    "EE": {
+      "flag": "🇪🇪",
+      "name": "Estonia"
+    },
+    "IS": {
+      "flag": "🇮🇸",
+      "name": "Iceland"
+    },
+    "LU": {
+      "flag": "🇱🇺",
+      "name": "Luxembourg"
+    },
+    "MT": {
+      "flag": "🇲🇹",
+      "name": "Malta"
+    },
+    "CY": {
+      "flag": "🇨🇾",
+      "name": "Cyprus"
+    }
+  }
+}

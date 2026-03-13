@@ -1,0 +1,15 @@
+#!/bin/bash
+
+echo "=== Bitcoin Network Fees ==="
+fees_data=$(curl -s "https://mempool.space/api/v1/fees/recommended")
+if [[ $fees_data == *"fastestFee"* ]]; then
+    fastest=$(echo $fees_data | grep -o '"fastestFee":[0-9]*' | cut -d':' -f2)
+    half_hour=$(echo $fees_data | grep -o '"halfHourFee":[0-9]*' | cut -d':' -f2)
+    hour=$(echo $fees_data | grep -o '"hourFee":[0-9]*' | cut -d':' -f2)
+    
+    echo "Fastest (Next Block): $fastest sat/vB"
+    echo "Medium (Within 30m): $half_hour sat/vB"
+    echo "Slow (Within 1h): $hour sat/vB"
+else
+    echo "Error: Could not fetch fee data"
+fi
