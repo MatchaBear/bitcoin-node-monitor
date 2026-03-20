@@ -1,8 +1,11 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/number_format.sh"
+
 # Format angka
 format_number() {
-    printf "%'.0f" "$1"
+    format_integer "$1"
 }
 
 # Ambil block height

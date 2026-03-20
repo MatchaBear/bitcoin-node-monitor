@@ -6,6 +6,7 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
     source "$SCRIPT_DIR/.env"
     set +a
 fi
+source "$SCRIPT_DIR/lib/number_format.sh"
 RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
 RPC_PASS=${BTC_RPC_PASS:-""}
 
@@ -211,9 +212,9 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
     fi
     
     echo -e "Status: $sync_status"
-    echo -e "Height: ${WHITE}$(printf "%'d" $blocks)${NC} / ${WHITE}$(printf "%'d" $headers)${NC}"
+    echo -e "Height: ${WHITE}$(format_integer "$blocks")${NC} / ${WHITE}$(format_integer "$headers")${NC}"
     echo -e "Peers: $peer_status"
-    echo -e "Mempool: ${WHITE}$(printf "%'d" $mempool_size)${NC} tx ($(echo "scale=1; $mempool_bytes/1024/1024" | bc) MB)"
+    echo -e "Mempool: ${WHITE}$(format_integer "$mempool_size")${NC} tx ($(echo "scale=1; $mempool_bytes/1024/1024" | bc) MB)"
     
     # Show public IP first (VPN detection for network engineers!) 🕵️‍♂️
     echo -e "${CYAN}🌐 Network Information:${NC}"
@@ -597,24 +598,24 @@ if [[ "$api_success" == "true" ]]; then
     fi
 
     # Format raw value with proper thousand separator
-    if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "IDR" ]]; then
-        raw_formatted=$(printf "%'.0f" "$raw_abs" 2>/dev/null || echo "0")
+    if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "IDR" || "$currency_symbol" == "Rp." ]]; then
+        raw_formatted=$(format_number "$raw_abs" 0)
     else
-        raw_formatted=$(printf "%'.2f" "$raw_abs" 2>/dev/null || echo "0.00")
+        raw_formatted=$(format_number "$raw_abs" 2)
     fi
 
     echo "${change_color}$change_symbol $pct_formatted% ($currency_symbol$raw_formatted)${NC}"
 }
     
     # Display all currencies with consistent formatting and provider info
-    echo -e "USD: ${WHITE}\$$(printf "%'15.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${CYAN}($USD_PROVIDER)${NC}"
-    echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${CYAN}($EUR_PROVIDER)${NC}"
-    echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${CYAN}($GBP_PROVIDER)${NC}"
-    echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${CYAN}($SGD_PROVIDER)${NC}"
-    echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${CYAN}($CHF_PROVIDER)${NC}"
-    echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${CYAN}($JPY_PROVIDER)${NC}"
-    echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${CYAN}($KRW_PROVIDER)${NC}"
-    echo -e "IDR: ${WHITE}IDR$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.") ${CYAN}($IDR_PROVIDER)${NC}"
+    echo -e "USD: ${WHITE}\$$(format_number_width 15 "$usd_price" 2)${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${CYAN}($USD_PROVIDER)${NC}"
+    echo -e "EUR: ${WHITE}€$(format_number_width 15 "$eur_price" 2)${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${CYAN}($EUR_PROVIDER)${NC}"
+    echo -e "GBP: ${WHITE}£$(format_number_width 15 "$gbp_price" 2)${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${CYAN}($GBP_PROVIDER)${NC}"
+    echo -e "SGD: ${WHITE}S\$$(format_number_width 14 "$sgd_price" 2)${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${CYAN}($SGD_PROVIDER)${NC}"
+    echo -e "CHF: ${WHITE}CHF$(format_number_width 13 "$chf_price" 2)${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${CYAN}($CHF_PROVIDER)${NC}"
+    echo -e "JPY: ${WHITE}¥$(format_number_width 15 "$jpy_price" 0)${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${CYAN}($JPY_PROVIDER)${NC}"
+    echo -e "KRW: ${WHITE}₩$(format_number_width 15 "$krw_price" 0)${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${CYAN}($KRW_PROVIDER)${NC}"
+    echo -e "IDR: ${WHITE}IDR$(format_number_width 13 "$idr_price" 0)${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "Rp.") ${CYAN}($IDR_PROVIDER)${NC}"
 else
     echo -e "${RED}❌ Price APIs currently unavailable${NC}"
     echo -e "${YELLOW}💡 This may be due to rate limiting or network issues${NC}"
@@ -646,14 +647,14 @@ if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . > /dev/null 2>&1; then
         ath_indicator="${GREEN}🔥 NEW ATH! ${NC}"
     fi
     
-    echo -e "USD: ${YELLOW}\$$(printf "%'15.2f" "$usd_ath")${NC} $ath_indicator"
-    echo -e "EUR: ${YELLOW}€$(printf "%'15.2f" "$eur_ath")${NC}"
-    echo -e "GBP: ${YELLOW}£$(printf "%'15.2f" "$gbp_ath")${NC}"
-    echo -e "SGD: ${YELLOW}S\$$(printf "%'14.2f" "$sgd_ath")${NC}"
-    echo -e "CHF: ${YELLOW}CHF$(printf "%'13.2f" "$chf_ath")${NC}"
-    echo -e "JPY: ${YELLOW}¥$(printf "%'15.0f" "$jpy_ath")${NC}"
-    echo -e "KRW: ${YELLOW}₩$(printf "%'15.0f" "$krw_ath")${NC}"
-    echo -e "IDR: ${YELLOW}IDR$(printf "%'13.0f" "$idr_ath")${NC}"
+    echo -e "USD: ${YELLOW}\$$(format_number_width 15 "$usd_ath" 2)${NC} $ath_indicator"
+    echo -e "EUR: ${YELLOW}€$(format_number_width 15 "$eur_ath" 2)${NC}"
+    echo -e "GBP: ${YELLOW}£$(format_number_width 15 "$gbp_ath" 2)${NC}"
+    echo -e "SGD: ${YELLOW}S\$$(format_number_width 14 "$sgd_ath" 2)${NC}"
+    echo -e "CHF: ${YELLOW}CHF$(format_number_width 13 "$chf_ath" 2)${NC}"
+    echo -e "JPY: ${YELLOW}¥$(format_number_width 15 "$jpy_ath" 0)${NC}"
+    echo -e "KRW: ${YELLOW}₩$(format_number_width 15 "$krw_ath" 0)${NC}"
+    echo -e "IDR: ${YELLOW}IDR$(format_number_width 13 "$idr_ath" 0)${NC}"
     echo -e "${CYAN}📡 ATH Source: $ath_source${NC}"
 else
     echo -e "${RED}❌ ATH data unavailable${NC}"
@@ -692,10 +693,10 @@ if [ ! -z "$blocks" ]; then
     blocks_to_halving=$((next_halving - current_height))
     days_to_halving=$((blocks_to_halving * 10 / 1440))
     
-    echo -e "Current Supply: ${WHITE}$(printf "%'.0f" "$total_supply")${NC} BTC (${percent_mined}%)"
-    echo -e "Remaining: ${WHITE}$(printf "%'.0f" "$remaining")${NC} BTC"
+    echo -e "Current Supply: ${WHITE}$(format_number "$total_supply" 0)${NC} BTC (${percent_mined}%)"
+    echo -e "Remaining: ${WHITE}$(format_number "$remaining" 0)${NC} BTC"
     echo -e "Block Reward: ${WHITE}$current_reward${NC} BTC"
-    echo -e "Next Halving: ${YELLOW}$(printf "%'d" $blocks_to_halving)${NC} blocks (~$(printf "%'d" $days_to_halving) days)"
+    echo -e "Next Halving: ${YELLOW}$(format_integer "$blocks_to_halving")${NC} blocks (~$(format_integer "$days_to_halving") days)"
 else
     echo -e "${RED}❌ Supply data unavailable${NC}"
 fi
@@ -704,4 +705,3 @@ echo
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${WHITE}💡 Use ${BOLD}btcm${NC}${WHITE} for continuous monitoring${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-

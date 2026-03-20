@@ -239,6 +239,18 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
     source "$SCRIPT_DIR/.env"
     set +a
 fi
+source "$SCRIPT_DIR/lib/number_format.sh"
+
+show_fee_line() {
+    local color="$1"
+    local label="$2"
+    local value="$3"
+    local value_width="${4:-6}"
+    local formatted_value
+
+    formatted_value=$(printf "%${value_width}s" "$value")
+    echo -e "  ${color}${label}${NC} ${WHITE}${formatted_value}${NC} sat/vB"
+}
 
 # RPC Configuration - loaded from .env (no hardcoded secrets)
 RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
@@ -371,10 +383,10 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
     fi
     
     echo -e "Status: $sync_status"
-    echo -e "Height: ${WHITE}$(printf "%'d" $blocks)${NC} / ${WHITE}$(printf "%'d" $headers)${NC}  ${HINT}← each block = a page in Bitcoin's accounting book${NC}"
+    echo -e "Height: ${WHITE}$(format_integer "$blocks")${NC} / ${WHITE}$(format_integer "$headers")${NC}  ${HINT}← each block = a page in Bitcoin's accounting book${NC}"
     echo -e "Peers: $peer_status  ${HINT}← other computers you're connected to, like neighbors sharing notes${NC}"
         mempool_mb=$(printf "%.1f" "$(echo "scale=2; $mempool_bytes/1024/1024" | bc)" 2>/dev/null)
-    echo -e "Mempool: ${WHITE}$(printf "%'d" $mempool_size)${NC} tx (${mempool_mb} MB)  ${HINT}← waiting room for unconfirmed transactions${NC}"
+    echo -e "Mempool: ${WHITE}$(format_integer "$mempool_size")${NC} tx (${mempool_mb} MB)  ${HINT}← waiting room for unconfirmed transactions${NC}"
     
     # Show public IP first (VPN detection for network engineers!) 🕵️‍♂️
     echo -e "${CYAN}🌐 Network Information:${NC}"
@@ -507,11 +519,11 @@ if [[ -n "$fee_data" ]] && echo "$fee_data" | jq -e '.fastestFee' >/dev/null 2>&
     minimum=$(echo "$fee_data" | jq -r '.minimumFee')
 
     # Color-code fee urgency
-    echo -e "  ${RED}⚡ Next Block:${NC}  ${WHITE}${fastest} sat/vB${NC}"
-    echo -e "  ${YELLOW}🕐 ~30 min:${NC}    ${WHITE}${halfhour} sat/vB${NC}"
-    echo -e "  ${GREEN}🕐 ~1 hour:${NC}    ${WHITE}${hour} sat/vB${NC}"
-    echo -e "  ${CYAN}🐢 Economy:${NC}    ${WHITE}${economy} sat/vB${NC}"
-    echo -e "  ${BRIGHT_CYAN}📉 Minimum:${NC}    ${WHITE}${minimum} sat/vB${NC}"
+    show_fee_line "$RED" "⚡ Next Block:" "$(format_number "$fastest" 0)"
+    show_fee_line "$YELLOW" "🕐 ~30 min:  " "$(format_number "$halfhour" 0)"
+    show_fee_line "$GREEN" "🕐 ~1 hour:  " "$(format_number "$hour" 0)"
+    show_fee_line "$CYAN" "🐢 Economy:  " "$(format_number "$economy" 0)"
+    show_fee_line "$BRIGHT_CYAN" "📉 Minimum:  " "$(format_number "$minimum" 0)"
     echo -e "  ${CYAN}📡 Source: mempool.space${NC}"
 else
     echo -e "  ${YELLOW}mempool.space unavailable${NC}"
@@ -526,7 +538,7 @@ if [[ -n "$local_fee_1" ]] && echo "$local_fee_1" | jq -e '.feerate' >/dev/null 
     local_fast_sv=$(printf "%.1f" "$(echo "scale=2; $local_fast * 100000" | bc 2>/dev/null)" 2>/dev/null)
     local_medium_sv=$(printf "%.1f" "$(echo "scale=2; $local_medium * 100000" | bc 2>/dev/null)" 2>/dev/null)
     local_slow_sv=$(printf "%.1f" "$(echo "scale=2; $local_slow * 100000" | bc 2>/dev/null)" 2>/dev/null)
-    echo -e "  ${BRIGHT_CYAN}🖥  Local node:${NC}  fast ${WHITE}${local_fast_sv}${NC} / med ${WHITE}${local_medium_sv}${NC} / slow ${WHITE}${local_slow_sv}${NC} sat/vB"
+    echo -e "  ${BRIGHT_CYAN}🖥  Local node:${NC}  fast ${WHITE}$(printf '%6s' "$local_fast_sv")${NC} / med ${WHITE}$(printf '%6s' "$local_medium_sv")${NC} / slow ${WHITE}$(printf '%6s' "$local_slow_sv")${NC} sat/vB"
 fi
 
 # Global mempool size comparison (your node vs network)
@@ -534,10 +546,10 @@ if [[ -n "$mempool_global" ]] && echo "$mempool_global" | jq -e '.count' >/dev/n
     global_mempool_count=$(echo "$mempool_global" | jq -r '.count')
     global_mempool_vsize=$(echo "$mempool_global" | jq -r '.vsize')
     global_mb=$(printf "%.1f" "$(echo "scale=2; $global_mempool_vsize / 1048576" | bc 2>/dev/null)" 2>/dev/null)
-    echo -e "  ${BRIGHT_CYAN}🌍 Network mempool:${NC} ${WHITE}$(printf "%'d" $global_mempool_count)${NC} tx (${WHITE}${global_mb}${NC} MvB)"
+    echo -e "  ${BRIGHT_CYAN}🌍 Network mempool:${NC} ${WHITE}$(format_integer "$global_mempool_count")${NC} tx (${WHITE}${global_mb}${NC} MvB)"
     if [[ -n "$mempool_size" ]]; then
         local_mb=$(printf "%.1f" "$(echo "scale=2; $mempool_bytes/1048576" | bc 2>/dev/null)" 2>/dev/null)
-        echo -e "  ${BRIGHT_CYAN}🖥  Your mempool:${NC}   ${WHITE}$(printf "%'d" $mempool_size)${NC} tx (${local_mb} MB)"
+        echo -e "  ${BRIGHT_CYAN}🖥  Your mempool:${NC}   ${WHITE}$(format_integer "$mempool_size")${NC} tx (${local_mb} MB)"
         echo -e "  ${HINT}📖 Yours < Network? Normal — pruned nodes see fewer tx. Like a local post office vs the main hub.${NC}"
     fi
 fi
@@ -915,10 +927,10 @@ if [[ "$api_success" == "true" ]]; then
     fi
 
     # Format raw value with proper thousand separator
-    if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "IDR" ]]; then
-        raw_formatted=$(printf "%'.0f" "$raw_abs" 2>/dev/null || echo "0")
+    if [[ "$currency_symbol" == "¥" || "$currency_symbol" == "₩" || "$currency_symbol" == "IDR" || "$currency_symbol" == "Rp." ]]; then
+        raw_formatted=$(format_number "$raw_abs" 0)
     else
-        raw_formatted=$(printf "%'.2f" "$raw_abs" 2>/dev/null || echo "0.00")
+        raw_formatted=$(format_number "$raw_abs" 2)
     fi
 
     echo "${change_color}$change_symbol $pct_formatted% ($currency_symbol$raw_formatted)${NC}"
@@ -963,7 +975,7 @@ format_delta30() {
 
     # Buat nilai absolute untuk tampilan
     clean_delta=$(echo "$delta" | sed 's/^[-+]//')
-    formatted_delta=$(printf "%'.2f" "$clean_delta")
+    formatted_delta=$(format_number "$clean_delta" 2)
 
     # Hitung persentase tetap untuk info (with zero division check)
     local pct=0
@@ -994,35 +1006,35 @@ format_delta30() {
     # Display all currencies with consistent formatting and provider info
     prev_usd_price=$(read_previous_price "USD")
     delta_usd=$(format_delta30 "$usd_price" "$prev_usd_price" "\$" "$prev_timestamp")
-    echo -e "USD: ${WHITE}\$$(printf "%'15.2f" "$usd_price")${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${BRIGHT_CYAN}($USD_PROVIDER)${NC} $delta_usd"
+    echo -e "USD: ${WHITE}\$$(format_number_width 15 "$usd_price" 2)${NC} $(format_change "$usd_change_pct" "$usd_change_raw" "\$") ${BRIGHT_CYAN}($USD_PROVIDER)${NC} $delta_usd"
 
     prev_eur_price=$(read_previous_price "EUR")
     delta_eur=$(format_delta30 "$eur_price" "$prev_eur_price" "€" "$prev_timestamp")
-    echo -e "EUR: ${WHITE}€$(printf "%'15.2f" "$eur_price")${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${BRIGHT_CYAN}($EUR_PROVIDER)${NC} $delta_eur"
+    echo -e "EUR: ${WHITE}€$(format_number_width 15 "$eur_price" 2)${NC} $(format_change "$eur_change_pct" "$eur_change_raw" "€") ${BRIGHT_CYAN}($EUR_PROVIDER)${NC} $delta_eur"
 
     prev_gbp_price=$(read_previous_price "GBP")
     delta_gbp=$(format_delta30 "$gbp_price" "$prev_gbp_price" "£" "$prev_timestamp")
-    echo -e "GBP: ${WHITE}£$(printf "%'15.2f" "$gbp_price")${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${BRIGHT_CYAN}($GBP_PROVIDER)${NC} $delta_gbp"
+    echo -e "GBP: ${WHITE}£$(format_number_width 15 "$gbp_price" 2)${NC} $(format_change "$gbp_change_pct" "$gbp_change_raw" "£") ${BRIGHT_CYAN}($GBP_PROVIDER)${NC} $delta_gbp"
 
     prev_sgd_price=$(read_previous_price "SGD")
     delta_sgd=$(format_delta30 "$sgd_price" "$prev_sgd_price" "S\$" "$prev_timestamp")
-    echo -e "SGD: ${WHITE}S\$$(printf "%'14.2f" "$sgd_price")${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${BRIGHT_CYAN}($SGD_PROVIDER)${NC} $delta_sgd"
+    echo -e "SGD: ${WHITE}S\$$(format_number_width 14 "$sgd_price" 2)${NC} $(format_change "$sgd_change_pct" "$sgd_change_raw" "S\$") ${BRIGHT_CYAN}($SGD_PROVIDER)${NC} $delta_sgd"
 
     prev_chf_price=$(read_previous_price "CHF")
     delta_chf=$(format_delta30 "$chf_price" "$prev_chf_price" "CHF" "$prev_timestamp")
-    echo -e "CHF: ${WHITE}CHF$(printf "%'13.2f" "$chf_price")${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${BRIGHT_CYAN}($CHF_PROVIDER)${NC} $delta_chf"
+    echo -e "CHF: ${WHITE}CHF$(format_number_width 13 "$chf_price" 2)${NC} $(format_change "$chf_change_pct" "$chf_change_raw" "CHF") ${BRIGHT_CYAN}($CHF_PROVIDER)${NC} $delta_chf"
 
     prev_jpy_price=$(read_previous_price "JPY")
     delta_jpy=$(format_delta30 "$jpy_price" "$prev_jpy_price" "¥" "$prev_timestamp")
-    echo -e "JPY: ${WHITE}¥$(printf "%'15.0f" "$jpy_price")${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${BRIGHT_CYAN}($JPY_PROVIDER)${NC} $delta_jpy"
+    echo -e "JPY: ${WHITE}¥$(format_number_width 15 "$jpy_price" 0)${NC} $(format_change "$jpy_change_pct" "$jpy_change_raw" "¥") ${BRIGHT_CYAN}($JPY_PROVIDER)${NC} $delta_jpy"
 
     prev_krw_price=$(read_previous_price "KRW")
     delta_krw=$(format_delta30 "$krw_price" "$prev_krw_price" "₩" "$prev_timestamp")
-    echo -e "KRW: ${WHITE}₩$(printf "%'15.0f" "$krw_price")${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${BRIGHT_CYAN}($KRW_PROVIDER)${NC} $delta_krw"
+    echo -e "KRW: ${WHITE}₩$(format_number_width 15 "$krw_price" 0)${NC} $(format_change "$krw_change_pct" "$krw_change_raw" "₩") ${BRIGHT_CYAN}($KRW_PROVIDER)${NC} $delta_krw"
 
     prev_idr_price=$(read_previous_price "IDR")
     delta_idr=$(format_delta30 "$idr_price" "$prev_idr_price" "IDR" "$prev_timestamp")
-    echo -e "IDR: ${WHITE}IDR$(printf "%'13.0f" "$idr_price")${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "IDR") ${BRIGHT_CYAN}($IDR_PROVIDER)${NC} $delta_idr"
+    echo -e "IDR: ${WHITE}IDR$(format_number_width 13 "$idr_price" 0)${NC} $(format_change "$idr_change_pct" "$idr_change_raw" "IDR") ${BRIGHT_CYAN}($IDR_PROVIDER)${NC} $delta_idr"
 
    else
     echo -e "${RED}❌ Price APIs currently unavailable${NC}"
@@ -1083,14 +1095,14 @@ if [[ ! -z "$ath_data" ]] && echo "$ath_data" | jq . > /dev/null 2>&1; then
         fi
     }
 
-    show_ath_line "USD: " "\$$(printf "%'15.2f" "$usd_ath")" "$usd_ath_date" "$ath_indicator"
-    show_ath_line "EUR: " "€$(printf "%'15.2f" "$eur_ath")" "$eur_ath_date"
-    show_ath_line "GBP: " "£$(printf "%'15.2f" "$gbp_ath")" "$gbp_ath_date"
-    show_ath_line "SGD: " "S\$$(printf "%'14.2f" "$sgd_ath")" "$sgd_ath_date"
-    show_ath_line "CHF: " "CHF$(printf "%'13.2f" "$chf_ath")" "$chf_ath_date"
-    show_ath_line "JPY: " "¥$(printf "%'15.0f" "$jpy_ath")" "$jpy_ath_date"
-    show_ath_line "KRW: " "₩$(printf "%'15.0f" "$krw_ath")" "$krw_ath_date"
-    show_ath_line "IDR: " "IDR$(printf "%'13.0f" "$idr_ath")" "$idr_ath_date"
+    show_ath_line "USD: " "\$$(format_number_width 15 "$usd_ath" 2)" "$usd_ath_date" "$ath_indicator"
+    show_ath_line "EUR: " "€$(format_number_width 15 "$eur_ath" 2)" "$eur_ath_date"
+    show_ath_line "GBP: " "£$(format_number_width 15 "$gbp_ath" 2)" "$gbp_ath_date"
+    show_ath_line "SGD: " "S\$$(format_number_width 14 "$sgd_ath" 2)" "$sgd_ath_date"
+    show_ath_line "CHF: " "CHF$(format_number_width 13 "$chf_ath" 2)" "$chf_ath_date"
+    show_ath_line "JPY: " "¥$(format_number_width 15 "$jpy_ath" 0)" "$jpy_ath_date"
+    show_ath_line "KRW: " "₩$(format_number_width 15 "$krw_ath" 0)" "$krw_ath_date"
+    show_ath_line "IDR: " "IDR$(format_number_width 13 "$idr_ath" 0)" "$idr_ath_date"
     
     echo -e "${BRIGHT_CYAN}📡 ATH Source: $ath_source${NC}"
 else
@@ -1131,10 +1143,10 @@ if [ ! -z "$blocks" ]; then
     blocks_to_halving=$((next_halving - current_height))
     days_to_halving=$((blocks_to_halving * 10 / 1440))
     
-    echo -e "Current Supply: ${WHITE}$(printf "%'.0f" "$total_supply")${NC} BTC (${percent_mined}%)"
-    echo -e "Remaining: ${WHITE}$(printf "%'.0f" "$remaining")${NC} BTC  ${HINT}← unmined BTC, still locked in the code${NC}"
+    echo -e "Current Supply: ${WHITE}$(format_number "$total_supply" 0)${NC} BTC (${percent_mined}%)"
+    echo -e "Remaining: ${WHITE}$(format_number "$remaining" 0)${NC} BTC  ${HINT}← unmined BTC, still locked in the code${NC}"
     echo -e "Block Reward: ${WHITE}$current_reward${NC} BTC  ${HINT}← reward miners get for each block, like a paycheck${NC}"
-    echo -e "Next Halving: ${YELLOW}$(printf "%'d" $blocks_to_halving)${NC} blocks (~$(printf "%'d" $days_to_halving) days)  ${HINT}← reward cuts in half. Less new BTC = more scarce${NC}"
+    echo -e "Next Halving: ${YELLOW}$(format_integer "$blocks_to_halving")${NC} blocks (~$(format_integer "$days_to_halving") days)  ${HINT}← reward cuts in half. Less new BTC = more scarce${NC}"
 else
     echo -e "${RED}❌ Supply data unavailable${NC}"
 fi
@@ -1232,4 +1244,3 @@ echo
     
     sleep 30
 done
-

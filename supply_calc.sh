@@ -1,5 +1,8 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/number_format.sh"
+
 # Node sync status
 current_height=360101          # Updated to latest observed height
 historical_year=2014           # Year of blocks being processed
@@ -61,10 +64,10 @@ echo "Current Date: ${current_month} ${current_year}"
 echo ""
 echo "Sync Status:"
 echo "  Processing blocks from: ${historical_year}"
-echo "  Current height: $(printf "%'d" $current_height)"
-echo "  Target height: $(printf "%'d" $target_height)"
+echo "  Current height: $(format_integer "$current_height")"
+echo "  Target height: $(format_integer "$target_height")"
 echo "  Progress: ${sync_percent}%"
-echo "  Blocks remaining: $(printf "%'d" $sync_remaining)"
+echo "  Blocks remaining: $(format_integer "$sync_remaining")"
 echo ""
 echo "Network Performance Metrics:"
 echo "  Sync speed: ~$sync_speed blocks/minute"
@@ -73,8 +76,8 @@ echo "  Connected peers: $peer_connections"
 echo "  Estimated completion: ~$(echo "scale=1; ($target_height - $current_height) / ($sync_speed * 1440)" | bc) days"
 echo ""
 echo "Supply Information:"
-echo "  Current supply: $(printf "%'d" $supply) BTC"
-echo "  Remaining until max: $(printf "%'d" $remaining) BTC"
+echo "  Current supply: $(format_integer "$supply") BTC"
+echo "  Remaining until max: $(format_integer "$remaining") BTC"
 echo "  Percentage mined: ${percent_mined}%"
 echo "  Block reward: $current_reward BTC"
 echo ""
@@ -103,8 +106,8 @@ for ((i=0; i<current_era; i++)); do
 done
 echo ""
 echo "Next Halving:"
-echo "  At block: $(printf "%'d" $next_halving)"
-echo "  Blocks remaining: $(printf "%'d" $blocks_until_halving)"
+echo "  At block: $(format_integer "$next_halving")"
+echo "  Blocks remaining: $(format_integer "$blocks_until_halving")"
 echo "  Days until next halving: $days_until_halving"
 echo ""
 echo "Projected Schedule (from 2025):"
@@ -123,7 +126,7 @@ for ((i=0; i<5; i++)); do
     target_year=$(echo "scale=0; $current_year + $years_to_halving" | bc)
     
     echo "Halving $((i+1)):"
-    echo "  Block: $(printf "%'d" $halving_block)"
+    echo "  Block: $(format_integer "$halving_block")"
     echo "  Reward: $reward BTC"
     echo "  Expected: ~$target_year"
     echo ""
@@ -132,4 +135,3 @@ done
 echo "Note: Processing historical blocks from ${historical_year}"
 echo "      Current year is ${current_year}"
 echo "      Final Bitcoin will be mined in 2140 (115 years from now)"
-
