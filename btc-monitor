@@ -240,6 +240,7 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
     set +a
 fi
 source "$SCRIPT_DIR/lib/number_format.sh"
+source "$SCRIPT_DIR/lib/runtime_config.sh"
 
 show_fee_line() {
     local color="$1"
@@ -255,6 +256,7 @@ show_fee_line() {
 # RPC Configuration - loaded from .env (no hardcoded secrets)
 RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
 RPC_PASS=${BTC_RPC_PASS:-""}
+init_runtime_config
 
 # Fetch live FX rates from Frankfurter API (free, unlimited, no key)
 FX_CACHE_FILE="$SCRIPT_DIR/cache/fx_rates.json"
@@ -349,21 +351,24 @@ while true; do
     echo
 
 # Get all data in one go for efficiency
-sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockchaininfo 2>/dev/null)
-network_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getnetworkinfo 2>/dev/null)
-mempool_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getmempoolinfo 2>/dev/null)
+sync_info=$(btc_node_cli getblockchaininfo 2>/dev/null)
+network_info=$(btc_node_cli getnetworkinfo 2>/dev/null)
+mempool_info=$(btc_node_cli getmempoolinfo 2>/dev/null)
 
 # Node Status Section
 echo -e "${SECTION}🔧 NODE STATUS${NC}"
 echo -e "${HINT}   📖 Your node = your own copy of Bitcoin's ledger. No middleman.${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
-    headers=$(echo "$sync_info" | grep '"headers"' | grep -o '[0-9]*')
-    blocks=$(echo "$sync_info" | grep '"blocks"' | grep -o '[0-9]*')
-    connections=$(echo "$network_info" | grep '"connections"' | grep -o '[0-9]*')
-    mempool_size=$(echo "$mempool_info" | grep '"size"' | grep -o '[0-9]*')
-    mempool_bytes=$(echo "$mempool_info" | grep '"bytes"' | grep -o '[0-9]*')
+if [[ -n "$sync_info" ]] && echo "$sync_info" | jq -e '.blocks' >/dev/null 2>&1; then
+    headers=$(echo "$sync_info" | jq -r '.headers // 0')
+    blocks=$(echo "$sync_info" | jq -r '.blocks // 0')
+    connections=$(echo "$network_info" | jq -r '.connections // 0' 2>/dev/null || echo 0)
+    mempool_size=$(echo "$mempool_info" | jq -r '.size // 0' 2>/dev/null || echo 0)
+    mempool_bytes=$(echo "$mempool_info" | jq -r '.bytes // 0' 2>/dev/null || echo 0)
+    blockchain_pruned=$(echo "$sync_info" | jq -r '.pruned // false')
+    prune_height=$(echo "$sync_info" | jq -r '.pruneheight // 0')
+    prune_target_bytes=$(echo "$sync_info" | jq -r '.prune_target_size // 0')
     
     # Sync status with color
     if [ "$blocks" -eq "$headers" ]; then
@@ -456,7 +461,7 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
 
     # Show ALL peer IP addresses with country flags, names, and latency
     echo -e "   ${CYAN}Connected Peers (all $connections):${NC}"
-    peer_lines=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getpeerinfo 2>/dev/null | jq -r '.[] | "\(.addr)|\(.minping // .pingtime // 0)"')
+    peer_lines=$(btc_node_cli getpeerinfo 2>/dev/null | jq -r '.[] | "\(.addr)|\(.minping // .pingtime // 0)"')
     
     if [ ! -z "$peer_lines" ]; then
         echo "$peer_lines" | while IFS='|' read -r addr ping; do
@@ -507,9 +512,9 @@ fee_data=$(curl -s --connect-timeout 5 --max-time 8 "https://mempool.space/api/v
 mempool_global=$(curl -s --connect-timeout 5 --max-time 8 "https://mempool.space/api/mempool" 2>/dev/null)
 
 # Local node fee estimates
-local_fee_1=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" estimatesmartfee 1 2>/dev/null)
-local_fee_6=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" estimatesmartfee 6 2>/dev/null)
-local_fee_144=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" estimatesmartfee 144 2>/dev/null)
+local_fee_1=$(btc_node_cli estimatesmartfee 1 2>/dev/null)
+local_fee_6=$(btc_node_cli estimatesmartfee 6 2>/dev/null)
+local_fee_144=$(btc_node_cli estimatesmartfee 144 2>/dev/null)
 
 if [[ -n "$fee_data" ]] && echo "$fee_data" | jq -e '.fastestFee' >/dev/null 2>&1; then
     fastest=$(echo "$fee_data" | jq -r '.fastestFee')
@@ -860,8 +865,13 @@ idr_change_raw=$(echo "scale=2; $idr_price * $idr_change_pct / 100" | bc 2>/dev/
 
 # Write current prices to file for future reference (with timestamp)
 write_current_prices() {
-    cat > "$SCRIPT_DIR/btc_last_prices.txt" <<EOF
+    local tmp_file
+    tmp_file=$(mktemp "${SCRIPT_DIR}/btc_last_prices.tmp.XXXXXX") || return 1
+
+    cat > "$tmp_file" <<EOF
 TIMESTAMP:$(date '+%H:%M:%S')
+TIMESTAMP_ISO:$(date '+%Y-%m-%d %H:%M:%S')
+TIMESTAMP_EPOCH:$(date '+%s')
 USD:$usd_price
 EUR:$eur_price
 GBP:$gbp_price
@@ -871,6 +881,8 @@ JPY:$jpy_price
 KRW:$krw_price
 IDR:$idr_price
 EOF
+
+    mv "$tmp_file" "$SCRIPT_DIR/btc_last_prices.txt"
 }
 
 # Check if we have valid data
@@ -1157,9 +1169,9 @@ echo -e "${SECTION}⛏  NETWORK & NODE STATS${NC}"
 echo -e "${HINT}   📖 How powerful the Bitcoin network is, and how your node is doing.${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-mining_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getmininginfo 2>/dev/null)
-net_totals=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getnettotals 2>/dev/null)
-node_uptime=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" uptime 2>/dev/null)
+mining_info=$(btc_node_cli getmininginfo 2>/dev/null)
+net_totals=$(btc_node_cli getnettotals 2>/dev/null)
+node_uptime=$(btc_node_cli uptime 2>/dev/null)
 
 if [[ -n "$mining_info" ]] && echo "$mining_info" | jq -e '.difficulty' >/dev/null 2>&1; then
     difficulty=$(echo "$mining_info" | jq -r '.difficulty')
@@ -1191,7 +1203,7 @@ if [[ -n "$node_uptime" && "$node_uptime" =~ ^[0-9]+$ ]]; then
 fi
 
 # CPU & RAM usage of the Bitcoin node container
-docker_stats=$(docker stats bitcoin-node --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}' 2>/dev/null)
+docker_stats=$(docker stats "$BITCOIN_CONTAINER_NAME" --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}|{{.MemPerc}}' 2>/dev/null)
 if [[ -n "$docker_stats" ]]; then
     cpu_pct=$(echo "$docker_stats" | cut -d'|' -f1)
     mem_usage=$(echo "$docker_stats" | cut -d'|' -f2)
@@ -1210,7 +1222,7 @@ if [[ -n "$net_totals" ]] && echo "$net_totals" | jq -e '.totalbytesrecv' >/dev/
 fi
 
 # Disk Usage for Pruned Mode
-bitcoin_data_dir="$SCRIPT_DIR/data"
+bitcoin_data_dir="$BITCOIN_DATA_DIR"
 if [[ -d "$bitcoin_data_dir" ]]; then
     blocks_size=$(du -sm "$bitcoin_data_dir/blocks/" 2>/dev/null | awk '{print $1}')
     chainstate_size=$(du -sm "$bitcoin_data_dir/chainstate/" 2>/dev/null | awk '{print $1}')
@@ -1233,6 +1245,11 @@ if [[ -d "$bitcoin_data_dir" ]]; then
 
     echo -e "Disk Usage: ${disk_color}${blocks_gb} GB${NC} blocks (${prune_pct}% of ${prune_limit_mb}MB prune limit)"
     echo -e "            ${WHITE}${chainstate_mb} MB${NC} chainstate | ${WHITE}${total_gb} GB${NC} total"
+    if [[ "$blockchain_pruned" == "true" ]]; then
+        prune_target_mb=$(echo "scale=0; ${prune_target_bytes:-0} / 1048576" | bc 2>/dev/null || echo "0")
+        echo -e "            ${WHITE}Pruned${NC} from block ${WHITE}$(format_integer "$prune_height")${NC} | target ${WHITE}$(format_integer "$prune_target_mb") MB${NC}"
+    fi
+    echo -e "            ${WHITE}${bitcoin_data_dir}${NC} host data path"
     echo -e "            ${HINT}📖 Pruned = only keeps recent blocks, like a library that recycles old newspapers${NC}"
     echo -e "            ${HINT}📖 Chainstate = who owns what right now. Blocks = transaction history${NC}"
 fi

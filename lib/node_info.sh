@@ -3,7 +3,7 @@
 # Professional Node Info Library
 # Handles dynamic country/flag detection and peer information
 # Author: Bitcoin Node Monitor Project
-# Version: 3.0.0
+# Version: 3.1.0
 
 # Configuration paths
 if [[ -n "${BITCOIN_PROJECT_ROOT:-}" ]]; then

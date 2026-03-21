@@ -7,8 +7,10 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
     set +a
 fi
 source "$SCRIPT_DIR/lib/number_format.sh"
+source "$SCRIPT_DIR/lib/runtime_config.sh"
 RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
 RPC_PASS=${BTC_RPC_PASS:-""}
+init_runtime_config
 
 # Color definitions
 RED='\033[0;31m'
@@ -179,20 +181,20 @@ echo -e "${CYAN}============================================${NC}"
 echo
 
 # Get all data in one go for efficiency
-sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getblockchaininfo 2>/dev/null)
-network_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getnetworkinfo 2>/dev/null)
-mempool_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getmempoolinfo 2>/dev/null)
+sync_info=$(btc_node_cli getblockchaininfo 2>/dev/null)
+network_info=$(btc_node_cli getnetworkinfo 2>/dev/null)
+mempool_info=$(btc_node_cli getmempoolinfo 2>/dev/null)
 
 # Node Status Section
 echo -e "${BOLD}${GREEN}🔧 NODE STATUS${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
-    headers=$(echo "$sync_info" | grep '"headers"' | grep -o '[0-9]*')
-    blocks=$(echo "$sync_info" | grep '"blocks"' | grep -o '[0-9]*')
-    connections=$(echo "$network_info" | grep '"connections"' | grep -o '[0-9]*')
-    mempool_size=$(echo "$mempool_info" | grep '"size"' | grep -o '[0-9]*')
-    mempool_bytes=$(echo "$mempool_info" | grep '"bytes"' | grep -o '[0-9]*')
+if [[ -n "$sync_info" ]] && echo "$sync_info" | jq -e '.blocks' >/dev/null 2>&1; then
+    headers=$(echo "$sync_info" | jq -r '.headers // 0')
+    blocks=$(echo "$sync_info" | jq -r '.blocks // 0')
+    connections=$(echo "$network_info" | jq -r '.connections // 0' 2>/dev/null || echo 0)
+    mempool_size=$(echo "$mempool_info" | jq -r '.size // 0' 2>/dev/null || echo 0)
+    mempool_bytes=$(echo "$mempool_info" | jq -r '.bytes // 0' 2>/dev/null || echo 0)
     
     # Sync status with color
     if [ "$blocks" -eq "$headers" ]; then
@@ -276,7 +278,7 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
 
     # Show ALL peer IP addresses with country flags and names
     echo -e "   ${CYAN}Connected Peers (all $connections):${NC}"
-    peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" getpeerinfo 2>/dev/null | jq -r '.[].addr')
+    peer_ips=$(btc_node_cli getpeerinfo 2>/dev/null | jq -r '.[].addr')
     
     if [ ! -z "$peer_ips" ]; then
         echo "$peer_ips" | while read ip; do

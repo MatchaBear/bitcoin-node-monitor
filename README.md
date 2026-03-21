@@ -29,6 +29,16 @@ docker ps | grep bitcoin-node          # Verify node is up
 btcm                                    # Start monitoring
 ```
 
+Optional power-user overrides in `.env`:
+
+```bash
+BTC_CONTAINER_NAME=bitcoin-node
+BTC_DATA_DIR=./data
+```
+
+These let the scripts and Compose stack follow a custom container name or host data path
+while still mounting the node data into `/home/bitcoin/.bitcoin`.
+
 ## Dashboard Sections
 
 ### NODE STATUS
@@ -51,7 +61,14 @@ Mined supply, remaining BTC, current block reward, and next halving countdown.
 
 ### NETWORK & NODE STATS
 Hashrate (EH/s), difficulty, next difficulty adjustment, node uptime, bandwidth usage,
-and disk usage with prune limit warnings.
+disk usage with prune limit warnings, prune height, and the active host data path.
+
+Large values now use locale-independent comma grouping across the dashboard, so separators
+render correctly even when the shell locale is `C.UTF-8` and `printf "%'"` would otherwise
+show plain digits.
+
+Key Bitcoin Core RPC fields are now parsed with `jq` instead of `grep`, which makes the
+node-status and health sections more resilient to JSON output changes.
 
 ---
 
@@ -210,7 +227,9 @@ You pay: 140 × 5 = 700 sats = 0.000007 BTC ≈ $0.49 (at $70,000/BTC).
 ├── data/                    # Blockchain data (git-ignored)
 │   ├── blocks/              # Pruned block data (~9.5GB)
 │   └── chainstate/          # UTXO set (~10GB)
-└── lib/                     # Helper libraries
+└── lib/
+    ├── number_format.sh     # Locale-independent number formatter for grouped values
+    └── runtime_config.sh    # Shared container/data-dir runtime config
 ```
 
 ## Resuming the Claude Code Conversation
@@ -225,6 +244,8 @@ Or browse all sessions: `claude -r`
 
 ## Version History
 
+- **v3.1.0** (2026-03-21) — Add configurable container/data-dir runtime settings, switch key Bitcoin Core RPC parsing to `jq`, surface prune height/target in the dashboard, and harden price snapshot persistence
+- **v3.0.1** (2026-03-21) — Fix locale-dependent number formatting so comma separators render reliably in `btcm`, `btcs`, and related tools; add shared `lib/number_format.sh`
 - **v3.0.0** (2026-03-12) — Major upgrade: .env credentials, live FX rates (Frankfurter), persistent ATH cache, fee estimation panel (mempool.space), network stats (hashrate/difficulty/uptime/bandwidth/disk), beginner-friendly hints, ATH dates for all 8 currencies
 - **v2.0.0** — Enhanced visual output, colored dashboard, btcs quick status
 - **v1.0.0** — Initial monitoring scripts

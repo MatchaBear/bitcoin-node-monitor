@@ -2,7 +2,7 @@
 
 # Bitcoin Node Monitor - Simple Launcher
 # Easy-to-use commands for all monitoring functions
-# Version: 3.0.0
+# Version: 3.1.0
 
 # Colors for better user experience
 readonly RED='\033[0;31m'
@@ -218,14 +218,14 @@ run_status() {
 show_version() {
     show_banner
     echo -e "${WHITE}Version Information:${NC}"
-    echo -e "  Bitcoin Node Monitor: ${GREEN}v3.0.0${NC}"
+    echo -e "  Bitcoin Node Monitor: ${GREEN}v3.1.0${NC}"
     echo -e "  Architecture: ${CYAN}Professional Library-based${NC}"
     echo -e "  Author: ${PURPLE}Bitcoin Node Monitor Project${NC}"
     echo -e "  License: ${YELLOW}MIT${NC}"
     echo
     echo -e "${CYAN}Libraries:${NC}"
-    echo -e "  • Currency Manager v3.0.0"
-    echo -e "  • Node Info Manager v3.0.0"
+    echo -e "  • Currency Manager v3.1.0"
+    echo -e "  • Node Info Manager v3.1.0"
     echo
     echo -e "${CYAN}Features:${NC}"
     echo -e "  • Dynamic currency support (8 currencies)"
