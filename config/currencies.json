@@ -1,0 +1,66 @@
+{
+  "supported_currencies": {
+    "USD": {
+      "country_code": "US",
+      "priority": 1,
+      "display_format": "%.2f",
+      "ath_fallback": 111814,
+      "exchange_rate_base": 1.0
+    },
+    "EUR": {
+      "country_code": "DE",
+      "priority": 2,
+      "display_format": "%.2f",
+      "ath_fallback": 105495,
+      "exchange_rate_base": 0.85
+    },
+    "GBP": {
+      "country_code": "GB",
+      "priority": 3,
+      "display_format": "%.2f",
+      "ath_fallback": 89249,
+      "exchange_rate_base": 0.75
+    },
+    "SGD": {
+      "country_code": "SG",
+      "priority": 4,
+      "display_format": "%.2f",
+      "ath_fallback": 148442,
+      "exchange_rate_base": 1.35
+    },
+    "CHF": {
+      "country_code": "CH",
+      "priority": 5,
+      "display_format": "%.2f",
+      "ath_fallback": 99287,
+      "exchange_rate_base": 0.88
+    },
+    "JPY": {
+      "country_code": "JP",
+      "priority": 6,
+      "display_format": "%.0f",
+      "ath_fallback": 16991443,
+      "exchange_rate_base": 150
+    },
+    "KRW": {
+      "country_code": "KR",
+      "priority": 7,
+      "display_format": "%.0f",
+      "ath_fallback": 157802010,
+      "exchange_rate_base": 1300
+    },
+    "IDR": {
+      "country_code": "ID",
+      "priority": 8,
+      "display_format": "%.0f",
+      "ath_fallback": 1829440608,
+      "exchange_rate_base": 15800
+    }
+  },
+  "api_config": {
+    "country_api": "https://restcountries.com/v3.1",
+    "cache_duration": 86400,
+    "timeout": 5,
+    "max_retries": 3
+  }
+}

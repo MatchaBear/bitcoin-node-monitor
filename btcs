@@ -11,6 +11,20 @@ WHITE='\033[1;37m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+
+RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
+RPC_PASS=${BTC_RPC_PASS:-""}
+
+bitcoin_cli() {
+    docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" "$@"
+}
+
 # Country flag mapping function
 get_country_flag() {
     local country_code="$1"
@@ -169,9 +183,9 @@ echo -e "${CYAN}============================================${NC}"
 echo
 
 # Get all data in one go for efficiency
-sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getblockchaininfo 2>/dev/null)
-network_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getnetworkinfo 2>/dev/null)
-mempool_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getmempoolinfo 2>/dev/null)
+sync_info=$(bitcoin_cli getblockchaininfo 2>/dev/null)
+network_info=$(bitcoin_cli getnetworkinfo 2>/dev/null)
+mempool_info=$(bitcoin_cli getmempoolinfo 2>/dev/null)
 
 # Node Status Section
 echo -e "${BOLD}${GREEN}🔧 NODE STATUS${NC}"
@@ -266,7 +280,7 @@ if [ $? -eq 0 ] && [ ! -z "$sync_info" ]; then
 
     # Show ALL peer IP addresses with country flags and names
     echo -e "   ${CYAN}Connected Peers (all $connections):${NC}"
-    peer_ips=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getpeerinfo 2>/dev/null | jq -r '.[].addr')
+    peer_ips=$(bitcoin_cli getpeerinfo 2>/dev/null | jq -r '.[].addr')
     
     if [ ! -z "$peer_ips" ]; then
         echo "$peer_ips" | while read ip; do
@@ -695,4 +709,3 @@ echo
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${WHITE}💡 Use ${BOLD}btcm${NC}${WHITE} for continuous monitoring${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-

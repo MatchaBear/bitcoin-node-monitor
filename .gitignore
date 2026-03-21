@@ -26,12 +26,19 @@ wallets/
 *.swp
 *.swo
 .DS_Store
+btc_last_prices.txt
+last_ip.txt
+peer_country_cache.txt
+cache/*.json
 
 # IDE and editor files
 .idea/
 .vscode/
 *.sublime*
 *~
+*.bak
+*-backup-*
+*.pre-upgrade-backup-*
 
 # Docker related
 .docker/
@@ -40,4 +47,3 @@ docker-data/
 # System files
 *.pid
 *.sock
-

@@ -1,11 +1,25 @@
 #!/bin/bash
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+    set -a
+    source "$SCRIPT_DIR/.env"
+    set +a
+fi
+
+RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
+RPC_PASS=${BTC_RPC_PASS:-""}
+
+bitcoin_cli() {
+    docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" "$@"
+}
+
 # Function to check node details
 check_node() {
     echo "=== Node Status ==="
     
     # Get blockchain info
-    sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getblockchaininfo)
+    sync_info=$(bitcoin_cli getblockchaininfo)
     if [ $? -eq 0 ]; then
         headers=$(echo "$sync_info" | grep '"headers"' | grep -o '[0-9]*')
         blocks=$(echo "$sync_info" | grep '"blocks"' | grep -o '[0-9]*')
@@ -16,19 +30,19 @@ check_node() {
         echo "Block Height: $(printf "%'d" $blocks) / $(printf "%'d" $headers)"
         
         # Get network info
-        network_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getnetworkinfo)
+        network_info=$(bitcoin_cli getnetworkinfo)
         connections=$(echo "$network_info" | grep '"connections"' | grep -o '[0-9]*')
         echo "Connected Peers: $connections"
         
         # Get memory pool info
-        mempool_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getmempoolinfo)
+        mempool_info=$(bitcoin_cli getmempoolinfo)
         mempool_size=$(echo "$mempool_info" | grep '"size"' | grep -o '[0-9]*')
         mempool_bytes=$(echo "$mempool_info" | grep '"bytes"' | grep -o '[0-9]*')
         echo "Mempool Transactions: $(printf "%'d" $mempool_size)"
         echo "Mempool Size: $(echo "scale=2; $mempool_bytes/1024/1024" | bc) MB"
         
         # Get network stats
-        net_totals=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getnettotals)
+        net_totals=$(bitcoin_cli getnettotals)
         total_received=$(echo "$net_totals" | grep '"totalbytesrecv"' | grep -o '[0-9]*')
         total_sent=$(echo "$net_totals" | grep '"totalbytessent"' | grep -o '[0-9]*')
         echo "Total Received: $(echo "scale=2; $total_received/1024/1024" | bc) MB"
@@ -43,20 +57,20 @@ check_node_health() {
     local status=0
 
     # Check if node is responding
-    if ! docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getblockchaininfo > /dev/null 2>&1; then
+    if ! bitcoin_cli getblockchaininfo > /dev/null 2>&1; then
         echo "❌ ALERT: Bitcoin node is not responding!"
         status=1
     fi
 
     # Check peer connections
-    local peers=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getconnectioncount 2>/dev/null)
+    local peers=$(bitcoin_cli getconnectioncount 2>/dev/null)
     if [ "$peers" -lt 3 ]; then
         echo "⚠️  WARNING: Low peer count ($peers connections)"
         status=1
     fi
 
     # Check sync status
-    local sync_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getblockchaininfo 2>/dev/null)
+    local sync_info=$(bitcoin_cli getblockchaininfo 2>/dev/null)
     if [ $? -eq 0 ]; then
         local headers=$(echo "$sync_info" | grep '"headers"' | grep -o '[0-9]*')
         local blocks=$(echo "$sync_info" | grep '"blocks"' | grep -o '[0-9]*')
@@ -118,7 +132,7 @@ check_supply() {
     echo "=== Bitcoin Supply Information (until current block download) ==="
     
     # Get current block height
-    local blockchain_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getblockchaininfo 2>/dev/null)
+    local blockchain_info=$(bitcoin_cli getblockchaininfo 2>/dev/null)
     local current_height=$(echo "$blockchain_info" | grep '"blocks"' | grep -o '[0-9]*')
     
     if [ -z "$current_height" ]; then
@@ -127,7 +141,7 @@ check_supply() {
     
     # Get timestamp of last block
     local best_block_hash=$(echo "$blockchain_info" | grep '"bestblockhash"' | cut -d'"' -f4)
-    local block_info=$(docker exec bitcoin-node bitcoin-cli -rpcuser=bitcoinrpc -rpcpassword=vlN3waFpwnSP90urI8zXxI0L0ZWpzcxN getblock "$best_block_hash" 2>/dev/null)
+    local block_info=$(bitcoin_cli getblock "$best_block_hash" 2>/dev/null)
     local block_time=$(echo "$block_info" | grep '"time"' | grep -o '[0-9]*')
     
     # Format time in compatible way for both Linux and macOS
@@ -249,6 +263,11 @@ check_price() {
         echo -e "IDR: Rp.$(printf "%'.0f" "$idr_price")  ${change_color}(Δ Rp.$(printf "%'.0f" "$idr_diff"), ${idr_pct}%)${NC}"
 
         echo -e "📊 ${CYAN}All-Time High (ATH):${NC}"
+        # Handle null values safely
+        [[ "$usd_ath" == "null" || -z "$usd_ath" ]] && usd_ath="0"
+        [[ "$sgd_ath" == "null" || -z "$sgd_ath" ]] && sgd_ath="0"
+        [[ "$idr_ath" == "null" || -z "$idr_ath" ]] && idr_ath="0"
+        
         echo -e "USD: \$$(printf "%'.2f" "$usd_ath")"
         echo -e "SGD: S\$$(printf "%'.2f" "$sgd_ath")"
         echo -e "IDR: Rp.$(printf "%'.0f" "$idr_ath")"
