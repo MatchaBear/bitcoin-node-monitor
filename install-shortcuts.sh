@@ -2,7 +2,7 @@
 
 # Bitcoin Node Monitor - Shortcut Installer
 # Installs convenient shortcuts for easy access
-# Version: 3.0.0
+# Version: 3.1.0
 
 # Colors
 readonly RED='\033[0;31m'

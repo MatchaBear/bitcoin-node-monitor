@@ -1,12 +1,12 @@
 services:
   bitcoind:
     image: ruimarinho/bitcoin-core:latest
-    container_name: bitcoin-node
+    container_name: ${BTC_CONTAINER_NAME:-bitcoin-node}
     restart: unless-stopped
     env_file:
       - .env
     volumes:
-      - ./data:/home/bitcoin/.bitcoin
+      - "${BTC_DATA_DIR:-./data}:/home/bitcoin/.bitcoin"
     ports:
       - "127.0.0.1:8332:8332"
       - "8333:8333"

@@ -3,7 +3,7 @@
 # Professional Currency Manager Library
 # Handles dynamic currency data, flags, and symbols via APIs
 # Author: Bitcoin Node Monitor Project
-# Version: 3.0.0
+# Version: 3.1.0
 
 # Configuration paths
 if [[ -n "${BITCOIN_PROJECT_ROOT:-}" ]]; then

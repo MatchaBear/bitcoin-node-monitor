@@ -3,7 +3,7 @@
 # Professional Bitcoin Peer Monitor
 # Uses modern library architecture with caching and API integration
 # Author: Bitcoin Node Monitor Project
-# Version: 3.0.0
+# Version: 3.1.0
 
 # Script directory detection
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

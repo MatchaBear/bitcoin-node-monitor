@@ -6,45 +6,43 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
     source "$SCRIPT_DIR/.env"
     set +a
 fi
-
+source "$SCRIPT_DIR/lib/number_format.sh"
+source "$SCRIPT_DIR/lib/runtime_config.sh"
 RPC_USER=${BTC_RPC_USER:-"bitcoinrpc"}
 RPC_PASS=${BTC_RPC_PASS:-""}
-
-bitcoin_cli() {
-    docker exec bitcoin-node bitcoin-cli -rpcuser="$RPC_USER" -rpcpassword="$RPC_PASS" "$@"
-}
+init_runtime_config
 
 # Function to check node details
 check_node() {
     echo "=== Node Status ==="
     
     # Get blockchain info
-    sync_info=$(bitcoin_cli getblockchaininfo)
-    if [ $? -eq 0 ]; then
-        headers=$(echo "$sync_info" | grep '"headers"' | grep -o '[0-9]*')
-        blocks=$(echo "$sync_info" | grep '"blocks"' | grep -o '[0-9]*')
+    sync_info=$(btc_node_cli getblockchaininfo 2>/dev/null)
+    if echo "$sync_info" | jq -e '.blocks' >/dev/null 2>&1; then
+        headers=$(echo "$sync_info" | jq -r '.headers // 0')
+        blocks=$(echo "$sync_info" | jq -r '.blocks // 0')
         if [ ! -z "$headers" ] && [ "$headers" -gt 0 ]; then
             sync_percent=$(echo "scale=2; $blocks * 100 / $headers" | bc)
             echo "Sync Progress: $sync_percent%"
         fi
-        echo "Block Height: $(printf "%'d" $blocks) / $(printf "%'d" $headers)"
+        echo "Block Height: $(format_integer "$blocks") / $(format_integer "$headers")"
         
         # Get network info
-        network_info=$(bitcoin_cli getnetworkinfo)
-        connections=$(echo "$network_info" | grep '"connections"' | grep -o '[0-9]*')
+        network_info=$(btc_node_cli getnetworkinfo 2>/dev/null)
+        connections=$(echo "$network_info" | jq -r '.connections // 0')
         echo "Connected Peers: $connections"
         
         # Get memory pool info
-        mempool_info=$(bitcoin_cli getmempoolinfo)
-        mempool_size=$(echo "$mempool_info" | grep '"size"' | grep -o '[0-9]*')
-        mempool_bytes=$(echo "$mempool_info" | grep '"bytes"' | grep -o '[0-9]*')
-        echo "Mempool Transactions: $(printf "%'d" $mempool_size)"
+        mempool_info=$(btc_node_cli getmempoolinfo 2>/dev/null)
+        mempool_size=$(echo "$mempool_info" | jq -r '.size // 0')
+        mempool_bytes=$(echo "$mempool_info" | jq -r '.bytes // 0')
+        echo "Mempool Transactions: $(format_integer "$mempool_size")"
         echo "Mempool Size: $(echo "scale=2; $mempool_bytes/1024/1024" | bc) MB"
         
         # Get network stats
-        net_totals=$(bitcoin_cli getnettotals)
-        total_received=$(echo "$net_totals" | grep '"totalbytesrecv"' | grep -o '[0-9]*')
-        total_sent=$(echo "$net_totals" | grep '"totalbytessent"' | grep -o '[0-9]*')
+        net_totals=$(btc_node_cli getnettotals 2>/dev/null)
+        total_received=$(echo "$net_totals" | jq -r '.totalbytesrecv // 0')
+        total_sent=$(echo "$net_totals" | jq -r '.totalbytessent // 0')
         echo "Total Received: $(echo "scale=2; $total_received/1024/1024" | bc) MB"
         echo "Total Sent: $(echo "scale=2; $total_sent/1024/1024" | bc) MB"
     else
@@ -57,26 +55,26 @@ check_node_health() {
     local status=0
 
     # Check if node is responding
-    if ! bitcoin_cli getblockchaininfo > /dev/null 2>&1; then
+    if ! btc_node_cli getblockchaininfo > /dev/null 2>&1; then
         echo "❌ ALERT: Bitcoin node is not responding!"
         status=1
     fi
 
     # Check peer connections
-    local peers=$(bitcoin_cli getconnectioncount 2>/dev/null)
+    local peers=$(btc_node_cli getconnectioncount 2>/dev/null)
     if [ "$peers" -lt 3 ]; then
         echo "⚠️  WARNING: Low peer count ($peers connections)"
         status=1
     fi
 
     # Check sync status
-    local sync_info=$(bitcoin_cli getblockchaininfo 2>/dev/null)
-    if [ $? -eq 0 ]; then
-        local headers=$(echo "$sync_info" | grep '"headers"' | grep -o '[0-9]*')
-        local blocks=$(echo "$sync_info" | grep '"blocks"' | grep -o '[0-9]*')
+    local sync_info=$(btc_node_cli getblockchaininfo 2>/dev/null)
+    if echo "$sync_info" | jq -e '.blocks' >/dev/null 2>&1; then
+        local headers=$(echo "$sync_info" | jq -r '.headers // 0')
+        local blocks=$(echo "$sync_info" | jq -r '.blocks // 0')
         local behind=$((headers - blocks))
         if [ $behind -gt 1000 ]; then
-            echo "⚠️  WARNING: Node is $(printf "%'d" $behind) blocks behind"
+            echo "⚠️  WARNING: Node is $(format_integer "$behind") blocks behind"
             status=1
         fi
     fi
@@ -132,17 +130,21 @@ check_supply() {
     echo "=== Bitcoin Supply Information (until current block download) ==="
     
     # Get current block height
-    local blockchain_info=$(bitcoin_cli getblockchaininfo 2>/dev/null)
-    local current_height=$(echo "$blockchain_info" | grep '"blocks"' | grep -o '[0-9]*')
+    local blockchain_info=$(btc_node_cli getblockchaininfo 2>/dev/null)
+    local current_height
+    current_height=$(echo "$blockchain_info" | jq -r '.blocks // 0' 2>/dev/null)
     
     if [ -z "$current_height" ]; then
         current_height=0
     fi
     
     # Get timestamp of last block
-    local best_block_hash=$(echo "$blockchain_info" | grep '"bestblockhash"' | cut -d'"' -f4)
-    local block_info=$(bitcoin_cli getblock "$best_block_hash" 2>/dev/null)
-    local block_time=$(echo "$block_info" | grep '"time"' | grep -o '[0-9]*')
+    local best_block_hash
+    best_block_hash=$(echo "$blockchain_info" | jq -r '.bestblockhash // ""' 2>/dev/null)
+    local block_info
+    block_info=$(btc_node_cli getblock "$best_block_hash" 2>/dev/null)
+    local block_time
+    block_time=$(echo "$block_info" | jq -r '.time // 0' 2>/dev/null)
     
     # Format time in compatible way for both Linux and macOS
     if [ ! -z "$block_time" ]; then
@@ -181,14 +183,14 @@ check_supply() {
     local current_year=$(date +%Y)
     local years_remaining=$((2140 - current_year))
     
-    echo "Current Block Height: $(printf "%'d" $current_height)"
-    echo "Current Supply: $(printf "%'d" $total_supply) BTC"
-    echo "Remaining Supply: $(printf "%'d" $remaining) BTC"
+    echo "Current Block Height: $(format_integer "$current_height")"
+    echo "Current Supply: $(format_integer "$total_supply") BTC"
+    echo "Remaining Supply: $(format_integer "$remaining") BTC"
     echo "Percent Mined: $percent_mined%"
     echo "Current Block Reward: $current_reward BTC"
     echo "Last Block Timestamp: $readable_time"
     echo -e "\nHalving Information:"
-    echo "Next halving at block: $(printf "%'d" $next_halving)"
+    echo "Next halving at block: $(format_integer "$next_halving")"
     echo "Time until next halving: $time_until_halving"
     echo "Years until max supply: $years_remaining years (approx. year 2140)"
 }

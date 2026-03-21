@@ -9,9 +9,17 @@ This document explains how to verify the updated monitor script, and how to reco
 - Geolocation is cached and more resilient:
   - Provider order: ipinfo.io → ip-api.com → ipwho.is
   - Cached in: `peer_country_cache.txt` so repeat lookups don’t hit external APIs
+- Runtime is more configurable:
+  - `BTC_CONTAINER_NAME` can override the Docker container name
+  - `BTC_DATA_DIR` can override the host directory mounted into `/home/bitcoin/.bitcoin`
+- Dashboard internals are more robust:
+  - Key Bitcoin Core RPC fields are parsed with `jq` instead of `grep`
+  - Prune height/target and the active host data path are shown in the dashboard
+  - Price snapshots are written atomically with additional timestamp metadata
 
 Files affected:
 - `btc-monitor` (main dashboard script)
+- `btcs`, `btc-tools`, `docker-compose.yml`, `.env.example`
 - New cache file (runtime): `peer_country_cache.txt` in `~/bitcoin/`
 
 ---
@@ -20,10 +28,10 @@ Files affected:
 
 1) Sanity checks
 - Ensure Docker container is running:
-  - `docker ps --filter name=bitcoin-node`
+  - `docker ps --filter name=${BTC_CONTAINER_NAME:-bitcoin-node}`
 - Quick node connectivity checks:
-  - `docker exec bitcoin-node bitcoin-cli getnetworkinfo | jq '.connections'`
-  - `docker exec bitcoin-node bitcoin-cli getpeerinfo | jq 'length'`
+  - `docker exec ${BTC_CONTAINER_NAME:-bitcoin-node} bitcoin-cli getnetworkinfo | jq '.connections'`
+  - `docker exec ${BTC_CONTAINER_NAME:-bitcoin-node} bitcoin-cli getpeerinfo | jq 'length'`
 
 2) Script syntax check (no output means OK)
 - `bash -n /Users/bermekbukair/bitcoin/btc-monitor`
@@ -32,6 +40,9 @@ Files affected:
 - Start: `btcm` (Ctrl+C to exit)
 - Expect under “Connected Peers”: each line shows `[flag] ip:port (Country)  N ms`
 - Expect a new file: `/Users/bermekbukair/bitcoin/peer_country_cache.txt` that grows as peers are geolocated
+- Expect under disk/prune stats:
+  - A prune line showing prune height and target
+  - The host data path the script is reading from
 
 4) Spot-check latency and country
 - Compare latency roughly with geography (e.g., SG/SEA peers are usually lower ms; US/EU higher)
@@ -92,4 +103,7 @@ D) Temporary bypass of geolocation (quick workaround)
 - Output of:
   - `docker exec bitcoin-node bitcoin-cli getnetworkinfo | jq '.connections'`
   - `docker exec bitcoin-node bitcoin-cli getpeerinfo | jq '.[0] | {addr, minping, pingtime}'`
+  - `bash -n /Users/bermekbukair/bitcoin/btc-monitor && echo OK || echo FAIL`
+  - `docker exec ${BTC_CONTAINER_NAME:-bitcoin-node} bitcoin-cli getnetworkinfo | jq '.connections'`
+  - `docker exec ${BTC_CONTAINER_NAME:-bitcoin-node} bitcoin-cli getpeerinfo | jq '.[0] | {addr, minping, pingtime}'`
   - `bash -n /Users/bermekbukair/bitcoin/btc-monitor && echo OK || echo FAIL`
